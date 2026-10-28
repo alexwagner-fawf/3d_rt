@@ -1,0 +1,22 @@
+# environments and caches (created by setup.sh / env.sh)
+.venv/
+r-lib/
+.cache/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# machine-specific (written by setup.sh / voxsol synth)
+.Renviron
+config/synthetic.yaml
+
+# data, results and credentials
+work/
+data/external/
+data/synthetic/
+secrets/
+
+# R session files
+.Rhistory
+.RData
+.Rproj.user/

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voxsol"
+version = "0.1.0"
+description = "ULS point cloud based below-canopy insolation as a microclimate covariate"
+requires-python = ">=3.11"
+dependencies = []  # see requirements.txt (installed into the repo-local .venv)
+
+[project.scripts]
+voxsol = "voxsol.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+cache_dir = ".cache/pytest"
+addopts = "--basetemp=.cache/pytest-tmp"
+filterwarnings = ["ignore:DatetimeIndex.dayofyear is deprecated:DeprecationWarning", "ignore::pandas.errors.Pandas4Warning"]
