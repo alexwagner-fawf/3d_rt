@@ -10,6 +10,8 @@ from pyproj import CRS, Transformer
 from pyproj.crs import CompoundCRS
 from pyproj.transformer import TransformerGroup
 
+from voxsol import REPO_ROOT
+
 SBET_FIELDS = (
     "time", "lat", "lon", "h_ell", "vx", "vy", "vz", "roll", "pitch", "heading",
     "wander", "ax", "ay", "az", "wx", "wy", "wz",
@@ -17,6 +19,7 @@ SBET_FIELDS = (
 SBET_RECORD_BYTES = 8 * len(SBET_FIELDS)
 GPS_WEEK_S = 604800.0
 ADJUSTED_GPS_OFFSET = 1e9  # LAS adjusted standard GPS time = GPS time - 1e9
+PROJ_GRID_DIR = REPO_ROOT / "data" / "external" / "proj"  # geoid grids (PROJ_NETWORK is off)
 
 _TXT_ALIASES = {
     "time": ("time", "gps_time", "gpstime", "t", "sow", "gps time"),
@@ -93,12 +96,21 @@ def las_time_in_trajectory_base(t_las: np.ndarray, adjusted: bool, traj_time: np
     return sow, "GPS seconds of week"
 
 
-def projected_transformer(crs: str, vertical_crs: str | None) -> tuple[Transformer, dict]:
+def _register_grid_dir() -> None:
+    import pyproj.datadir
+
+    if PROJ_GRID_DIR.is_dir() and str(PROJ_GRID_DIR) not in pyproj.datadir.get_data_dir():
+        pyproj.datadir.append_data_dir(str(PROJ_GRID_DIR))
+
+
+def projected_transformer(crs: str, vertical_crs: str | None, strict: bool = True) -> tuple[Transformer, dict]:
     """Transformer from WGS84 geographic 3D (lat, lon, h_ell) to the site CRS.
 
     Returns the transformer and a report noting whether a geoid grid was available. Without a
-    vertical CRS heights stay ellipsoidal.
+    vertical CRS heights stay ellipsoidal. With one, a missing geoid grid raises (strict), because PROJ
+    would otherwise fall back to a "ballpark" conversion that leaves heights ~50 m off.
     """
+    _register_grid_dir()
     horizontal = CRS.from_user_input(crs)
     target = horizontal
     if vertical_crs:
@@ -114,11 +126,17 @@ def projected_transformer(crs: str, vertical_crs: str | None) -> tuple[Transform
     if not group.transformers:
         raise RuntimeError(f"No transformation EPSG:4979 -> {target.name}; missing grids: "
                            f"{report['unavailable_grids']}")
+    if vertical_crs and strict and not group.best_available:
+        urls = sorted({g.url for op in group.unavailable_operations for g in op.grids if not g.available and g.url})
+        raise RuntimeError(f"Geoid grid(s) for {vertical_crs} missing, heights would stay ellipsoidal. Download "
+                           f"into {PROJ_GRID_DIR}:\n" + "\n".join(f"  curl -fL --create-dirs -o "
+                                                                 f"{PROJ_GRID_DIR / Path(u).name} {u}" for u in urls))
     return group.transformers[0], report
 
 
-def to_projected(traj: pd.DataFrame, crs: str, vertical_crs: str | None = None) -> tuple[pd.DataFrame, dict]:
-    transformer, report = projected_transformer(crs, vertical_crs)
+def to_projected(traj: pd.DataFrame, crs: str, vertical_crs: str | None = None,
+                 strict: bool = True) -> tuple[pd.DataFrame, dict]:
+    transformer, report = projected_transformer(crs, vertical_crs, strict)
     x, y, z = transformer.transform(traj["lon"].to_numpy(), traj["lat"].to_numpy(), traj["h_ell"].to_numpy())
     out = traj[["time"]].copy()
     out["x"], out["y"], out["z"] = x, y, z

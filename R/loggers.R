@@ -1,14 +1,21 @@
-# TMS-4 data in long format: x, y, timestamp, value, height (15, 2, -8, "-0-10cm").
-# (For raw TOMST data_*.csv files, myClim::mc_read_files + mc_prep_clean would be the entry point.)
+# TMS-4 data in long format: x, y, timestamp, value, height (15, 2, -8, "-0-10cm") [, logger id],
+# as CSV or Parquet (the database snapshot written by `voxsol db`).
+# (For raw TOMST data_*.csv files, myClim::mc_read_files + mc_prep_clean would be the entry point;
+# myClim is not installed by setup.sh.)
 
 read_tms_long <- function(cfg) {
   cols <- cfg$inputs$tms_columns
   sensors <- unlist(cfg$calibration$sensors)
-  keep <- unlist(cols[c("x", "y", "time", "value", "height")], use.names = FALSE)
-  types <- stats::setNames(c("numeric", "numeric", "character", "numeric", "character"), keep)
-  dt <- data.table::fread(cfg$inputs$tms, select = types)
-  data.table::setnames(dt, keep, c("x", "y", "time", "value", "height"))
-  dt[, height := trimws(height)]
+  keep <- unlist(cols[c("x", "y", "time", "value", "height", "id")], use.names = FALSE)
+  std <- c("x", "y", "time", "value", "height", if (!is.null(cols$id)) "logger_id")
+  if (grepl("\\.(parquet|pq)$", cfg$inputs$tms, ignore.case = TRUE)) {
+    dt <- read_parquet_dt(cfg$inputs$tms)[, keep, with = FALSE]
+  } else {
+    types <- stats::setNames(c("numeric", "numeric", "character", "numeric", "character", "character")[seq_along(keep)], keep)
+    dt <- data.table::fread(cfg$inputs$tms, select = types)
+  }
+  data.table::setnames(dt, keep, std)
+  dt[, height := trimws(as.character(height))]
   lookup <- stats::setNames(names(sensors), sensors)
   dt[, sensor := unname(lookup[height])]
   unknown <- dt[is.na(sensor), unique(height)]
@@ -18,12 +25,19 @@ read_tms_long <- function(cfg) {
     dt[, time := as.POSIXct(time, tz = cfg$inputs$tms_timezone, tryFormats = c("%Y-%m-%d %H:%M:%OS", "%Y-%m-%dT%H:%M:%OS",
                                                                               "%d.%m.%Y %H:%M:%OS", "%Y-%m-%d %H:%M"))]
   }
-  attr(dt$time, "tzone") <- "UTC"
+  data.table::setattr(dt$time, "tzone", "UTC")
   dt[, value := as.numeric(value)]
   dt[]
 }
 
 attach_logger_ids <- function(tms, loggers, tol = 0.5) {
+  if ("logger_id" %in% names(tms)) {
+    tms[, logger_id := as.character(logger_id)]
+    unknown <- setdiff(unique(tms$logger_id), loggers$id)
+    if (length(unknown)) warning(length(unknown), " TMS logger ids not in loggers.csv (dropped): ",
+                                 paste(utils::head(unknown, 10), collapse = ", "))
+    return(tms[logger_id %in% loggers$id])
+  }
   xy <- unique(tms[, .(x, y)])
   d2 <- outer(xy$x, loggers$x, "-")^2 + outer(xy$y, loggers$y, "-")^2
   j <- max.col(-d2, ties.method = "first")
@@ -45,6 +59,6 @@ qc_tms <- function(tms, max_jump = 8) {
       bad := bad | (abs(value - prev) > max_jump & abs(value - nxt) > max_jump)]
   n_bad <- tms[, sum(bad)]
   out <- tms[bad == FALSE][, c("bad", "prev", "nxt") := NULL]
-  attr(out, "qc_removed") <- n_bad
+  data.table::setattr(out, "qc_removed", n_bad)
   out[]
 }

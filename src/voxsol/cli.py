@@ -81,6 +81,48 @@ def run(
 
 
 @app.command()
+def db(
+    config: Path = typer.Argument(None, exists=True, help="Site YAML config with a `database` section"),
+    check: bool = typer.Option(False, "--check", help="Only test the connection and print a database overview"),
+    service: str = typer.Option(None, help="libpq service (default: database.service or 'voxsol')"),
+) -> None:
+    """Export TMS-4 data, logger positions and the ERA5 reference from PostgreSQL to work/<site>/db/."""
+    import psycopg
+
+    try:
+        _db(config, check, service)
+    except (ValueError, psycopg.Error) as exc:  # configuration/data/connection problems: message, no traceback
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1)
+
+
+def _db(config: Path | None, check: bool, service: str | None) -> None:
+    import pandas as pd
+
+    from voxsol.io.db import connect, export_site, overview
+
+    cfg = load_config(config) if config else None
+    if not check:
+        if cfg is None:
+            raise typer.BadParameter("a site config is required for the export (or use --check)")
+        if service and cfg.database:
+            cfg.database.service = service
+        report = export_site(cfg)
+        typer.echo(json.dumps(report, indent=2, default=str))
+        typer.echo(f"Snapshot written to {cfg.db_dir}")
+        return
+    name = service or (cfg.database.service if cfg and cfg.database else "voxsol")
+    with connect(name) as conn:
+        for key, value in overview(conn).items():
+            if isinstance(value, pd.DataFrame):
+                typer.echo(f"\n{key}:\n" + (value.to_string(index=False) if len(value) else "  (none)"))
+            elif isinstance(value, list):
+                typer.echo(f"{key}:\n  " + "\n  ".join(value))
+            else:
+                typer.echo(f"{key}: {value}")
+
+
+@app.command()
 def proxy(check: bool = typer.Option(False, "--check", help="Test the endpoints used by voxsol")) -> None:
     """Show the effective proxy/CA settings (from secrets/proxy.env) and optionally test connectivity."""
     from voxsol.netconfig import check_urls, describe

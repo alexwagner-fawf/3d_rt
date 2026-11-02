@@ -26,7 +26,7 @@ class Inputs(BaseModel):
     tms: str | None = Field(None, description="TMS-4 data in long format (CSV or Parquet)")
     tms_columns: dict[str, str] = Field(
         default_factory=lambda: {"x": "x", "y": "y", "time": "timestamp", "value": "value", "height": "height"},
-        description="Column names in the TMS long table")
+        description="Column names in the TMS long table; optional `id` = logger id column (else ids by position)")
     tms_timezone: str = "UTC"
 
     @field_validator("laz", mode="before")
@@ -86,12 +86,37 @@ class TraceParams(BaseModel):
     sensor_heights: list[float] = Field(default_factory=lambda: [0.02, 0.15], description="TMS T2/T3 heights [m]")
 
 
+class DatabaseParams(BaseModel):
+    """PostgreSQL source (`voxsol db`) for TMS-4 data, plot locations and the ERA5 reference.
+
+    Schema: docs/db/schema.sql. The connection comes from a libpq service in secrets/pg_service.conf
+    (password in secrets/pgpass, see scripts/db.sh). `voxsol db` writes a snapshot to work/<site>/db/.
+    """
+
+    service: str = Field("voxsol", description="libpq service name (secrets/pg_service.conf)")
+    versuchsflaeche: str | int | None = Field(None, description="Site: versuchsflaeche id, short, safe or clean name "
+                                                          "(may be omitted if only one site has deployments)")
+    behandlungseinheiten: list[str] = Field(default_factory=list,
+                                            description="Optional treatment filter (short names, eng or de)")
+    met_source: str | None = Field(None, description="externe_daten.met_points.source to use "
+                                                     "(may be omitted if the loggers link to only one source)")
+    skip_days_after_start: int = Field(1, ge=0, description="Drop the installation day(s) of every deployment")
+    exclude_locality_quality: list[str] = Field(default_factory=list,
+                                                description="Drop deployments with these locality_id_quality values")
+    xy_sd_by_quality: dict[str, float] = Field(default_factory=dict,
+                                               description="Logger position sd [m] per locality_id_quality "
+                                                           "(default: prepare.logger_xy_sd)")
+    ghi_label: Literal["auto", "end", "start", "instant"] = Field(
+        "auto", description="Time stamp convention of the hourly GHI (Open-Meteo: end of the averaging hour); "
+                            "auto = best match with clear-sky timing")
+
+
 class ForcingParams(BaseModel):
-    radiation: Literal["cams", "era5", "clearsky"] = "cams"
+    radiation: Literal["cams", "era5", "clearsky", "db"] = "cams"
     cloudiness: float = Field(0.0, ge=0, le=1, description="clearsky only: synthetic cloud modulation")
     seed: int = 0
     time_step: Literal["15min", "1h"] = "15min"
-    reference: Literal["era5land", "loggers", "file"] = "era5land"
+    reference: Literal["era5land", "loggers", "file", "db"] = "era5land"
     reference_loggers: list[str] = Field(default_factory=list)
     reference_file: str | None = None
     lapse_rate: float = Field(-0.0065, description="Air temperature lapse rate [K/m]")
@@ -145,12 +170,39 @@ class SiteConfig(BaseModel):
     forcing: ForcingParams = ForcingParams()
     horizon: HorizonParams = HorizonParams()
     calibration: CalibrationParams = CalibrationParams()
+    database: DatabaseParams | None = None
+
+    @model_validator(mode="after")
+    def _sources(self):
+        f = self.forcing
+        if self.database is None and "db" in (f.radiation, f.reference):
+            raise ValueError("forcing.radiation/reference = db needs a `database` section")
+        if f.radiation == "era5" and f.time_step != "1h":
+            raise ValueError("forcing.radiation = era5 is hourly: set forcing.time_step: 1h")
+        if f.reference == "db":
+            other = sorted({v for v in self.calibration.reference_vars.values() if v != "t2m"})
+            if other:
+                raise ValueError(f"the database reference only has t2m; set calibration.reference_vars to t2m "
+                                 f"for all sensors (got {other})")
+        if self.database is not None:
+            snapshot = self.db_dir
+            if self.inputs.tms is None:
+                self.inputs.tms = str(snapshot / "tms_long.parquet")
+                self.inputs.tms_columns.setdefault("id", "logger_id")
+            if self.inputs.loggers is None:
+                self.inputs.loggers = str(snapshot / "loggers.csv")
+        return self
 
     @property
     def workdir(self) -> Path:
         path = REPO_ROOT / "work" / self.site
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    @property
+    def db_dir(self) -> Path:
+        """Snapshot written by `voxsol db` (TMS long table, logger table, ERA5 points and series)."""
+        return REPO_ROOT / "work" / self.site / "db"
 
 
 def load_config(path: str | Path) -> SiteConfig:

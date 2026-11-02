@@ -1,6 +1,7 @@
 # Project-local R setup (active when R starts in the repository root):
 # - new packages go to r-lib/ (first library path), caches stay in .cache/ (see CLAUDE.md)
 # - corporate proxy / CA from secrets/proxy.env (see config/proxy.example.env) for install.packages etc.
+# - PostgreSQL service/password files from secrets/ (DBI::dbConnect(RPostgres::Postgres(), service = "voxsol"))
 # Machine-specific paths (TMPDIR, R_LIBS_USER) are in .Renviron, written by setup.sh.
 local({
   root <- normalizePath(".")
@@ -38,4 +39,8 @@ local({
       }
     }
   }
+
+  pg <- stats::setNames(file.path(root, "secrets", c("pg_service.conf", "pgpass")), c("PGSERVICEFILE", "PGPASSFILE"))
+  pg <- pg[file.exists(pg)]
+  if (length(pg)) do.call(Sys.setenv, as.list(pg))
 })

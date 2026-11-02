@@ -191,3 +191,89 @@ def reference_from_file(path: str | Path) -> pd.DataFrame:
     df.index = df.index.tz_localize("UTC") if df.index.tz is None else df.index.tz_convert("UTC")
     df.attrs.update(source=f"file:{Path(path).name}")
     return df
+
+
+# ---------------------------------------------------------------------------- database snapshot (voxsol db)
+
+# Hourly GHI time stamp -> middle of its averaging hour. Open-Meteo labels the mean of the preceding hour.
+GHI_LABEL_OFFSET_MIN = {"end": -30, "instant": 0, "start": 30}
+
+
+def read_db_met(db_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """ERA5 points and series from the `voxsol db` snapshot."""
+    points_csv, data_pq = Path(db_dir) / "met_points.csv", Path(db_dir) / "met_data.parquet"
+    if not points_csv.exists():
+        raise FileNotFoundError(f"{points_csv} missing: run `voxsol db <config>` first")
+    points = pd.read_csv(points_csv)
+    if points.empty or not data_pq.exists():
+        raise ValueError(f"{db_dir}: no ERA5 points/series are linked to the loggers (see db_export.json)")
+    return points, pd.read_parquet(data_pq)
+
+
+def _db_series(data: pd.DataFrame, variable: str) -> pd.DataFrame:
+    """time x met_point_id table of one variable."""
+    sel = data[data["variable"] == variable]
+    if sel.empty:
+        raise ValueError(f"the database snapshot has no '{variable}' series")
+    wide = sel.pivot_table(index="time", columns="met_point_id", values="value")
+    wide.index = pd.DatetimeIndex(wide.index).tz_convert("UTC")
+    return wide.sort_index()
+
+
+def db_reference(db_dir: Path, site_elevation: float, lapse_rate: float = -0.0065) -> pd.DataFrame:
+    """Hourly reference t2m [deg C] (and precip) from the ERA5 points linked to the loggers.
+
+    Each point is lapse-rate corrected from its own elevation (the height Open-Meteo downscaled it to)
+    to the site elevation, then the points are averaged.
+    """
+    points, data = read_db_met(db_dir)
+    t2m = _db_series(data, "t2m")
+    elev = points.set_index("met_point_id")["elevation"].reindex(t2m.columns).to_numpy(float)
+    shift = np.where(np.isfinite(elev), lapse_rate * (site_elevation - elev), 0.0)
+    out = pd.DataFrame({"t2m": (t2m + shift).mean(axis=1)})
+    if (data["variable"] == "precip").any():
+        out["precip"] = _db_series(data, "precip").mean(axis=1).reindex(out.index)
+    out.attrs.update(source=f"db:{points['source'].iloc[0]}", points=int(t2m.shape[1]),
+                     lapse_corrected=bool(np.isfinite(elev).all()))
+    return out
+
+
+def ghi_label_scores(ghi: pd.Series, lat: float, lon: float, altitude: float) -> dict[str, float]:
+    """Correlation of hourly GHI with clear-sky GHI at the hour middle implied by each label convention."""
+    from pvlib.location import Location
+
+    loc = Location(lat, lon, altitude=altitude)
+    scores = {}
+    for label, off in GHI_LABEL_OFFSET_MIN.items():
+        cs = loc.get_clearsky(ghi.index + pd.Timedelta(minutes=off), model="ineichen")["ghi"].to_numpy()
+        scores[label] = round(float(np.corrcoef(ghi.to_numpy(), cs)[0, 1]), 4)
+    return scores
+
+
+def db_radiation(db_dir: Path, start, end, lat: float, lon: float, altitude: float, time_step: str = "15min",
+                 label: str = "auto") -> tuple[pd.DataFrame, dict]:
+    """ERA5 hourly GHI from the database -> 15-min GHI (clear-sky shape within each hour, hourly energy
+    kept) -> DNI/DHI with Erbs. Returns the standard radiation table and the label check."""
+    from pvlib.irradiance import erbs
+    from pvlib.location import Location
+
+    _, data = read_db_met(db_dir)
+    ghi_h = _db_series(data, "ghi").mean(axis=1).dropna().clip(lower=0.0)
+    scores = ghi_label_scores(ghi_h, lat, lon, altitude)
+    if label == "auto":
+        label = max(scores, key=scores.get)
+    hour_start = ghi_h.index + pd.Timedelta(minutes=GHI_LABEL_OFFSET_MIN[label] - 30)
+    n, sub_s = 4, 900
+    starts = hour_start.repeat(n) + pd.to_timedelta(np.tile(np.arange(n) * sub_s, len(hour_start)), unit="s")
+    mid = starts + pd.Timedelta(seconds=sub_s / 2)
+    loc = Location(lat, lon, altitude=altitude)
+    cs = loc.get_clearsky(mid, model="ineichen")["ghi"].to_numpy().reshape(-1, n)
+    cs_mean = cs.mean(axis=1, keepdims=True)
+    shape = np.where(cs_mean > 1.0, cs / np.maximum(cs_mean, 1.0), 1.0)  # mean 1 within each hour
+    ghi = (ghi_h.to_numpy()[:, None] * shape).ravel()
+    parts = erbs(ghi, loc.get_solarposition(mid)["apparent_zenith"].to_numpy(), mid)
+    df = pd.DataFrame({"ghi": ghi, "dni": np.asarray(parts["dni"]), "dhi": np.asarray(parts["dhi"])}, index=starts)
+    if time_step == "1h":
+        df = df.resample("1h").mean()
+    df = df[(df.index >= pd.Timestamp(start, tz="UTC")) & (df.index < pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1))]
+    return _standard(df, STEP_S[time_step], f"db:ghi+erbs ({label})"), {"ghi_label": label, "ghi_label_corr": scores}

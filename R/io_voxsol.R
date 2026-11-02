@@ -27,6 +27,11 @@ read_site_config <- function(path) {
     cfg$inputs$tms_columns %||% list())
   cfg$inputs$tms_timezone <- cfg$inputs$tms_timezone %||% "UTC"
   cfg$workdir <- file.path(repo_root(), "work", cfg$site)
+  if (!is.null(cfg$database) && is.null(cfg$inputs$tms)) {
+    # snapshot written by `voxsol db` (same default as the Python config)
+    cfg$inputs$tms <- file.path(cfg$workdir, "db", "tms_long.parquet")
+    cfg$inputs$tms_columns$id <- cfg$inputs$tms_columns$id %||% "logger_id"
+  }
   cfg$outdir <- file.path(cfg$workdir, "calibration")
   dir.create(file.path(cfg$outdir, "maps"), recursive = TRUE, showWarnings = FALSE)
   cfg

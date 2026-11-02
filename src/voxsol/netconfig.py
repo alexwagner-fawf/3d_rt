@@ -18,6 +18,7 @@ CA_TARGETS = ("REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "CURL_CA_BUNDLE", "PIP_CERT
 SYSTEM_CA = ("/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/cert.pem")
 TEST_URLS = {
     "PyPI": "https://pypi.org/simple/",
+    "PyPI files": "https://files.pythonhosted.org/",
     "CRAN": "https://cloud.r-project.org/",
     "CAMS (SoDa)": "https://api.soda-solardata.com/",
     "CDS (ERA5)": "https://cds.climate.copernicus.eu/api",

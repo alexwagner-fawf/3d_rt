@@ -225,3 +225,40 @@ Deviations from the plan above, and why:
 - **Validation**: `voxsol validate` runs the ortho shadow check (synthetic: 97.7% agreement, κ = 0.79).
 - **R threading**: `run_calibration.R` re-launches itself with `OPENBLAS_NUM_THREADS=1`. OpenBLAS
   busy-waiting otherwise multiplied system CPU time about 10×.
+
+## Implementation notes (2026-11-02, PostgreSQL source)
+
+TMS-4 data, logger positions and the ERA5 reference live in a PostgreSQL/PostGIS database (schema dump
+in `docs/db/schema.sql`, from the user's `rstudio-export/`). Design:
+- **Snapshot, not live queries**: `voxsol db <config>` (`src/voxsol/io/db.py`) runs once in a read-only
+  session (`BEGIN READ ONLY`) and writes `work/<site>/db/` in the formats the pipeline already reads.
+  With a `database` section, `inputs.tms` / `inputs.loggers` default to that snapshot (Python and R).
+  Runs stay reproducible and work offline; nothing is ever written to the database.
+- **Logger identity** = `tms_deployments.locality_id` = `be_verjuengungskreise_pt.verjkr_id` (confirmed by
+  the user; `voxsol db --check` counts the matches). Deployments at one locality (logger swaps) form one series.
+  Only deployments that overlap in time become `<locality>_<serial>`. The logger table and the R
+  calibration now join by id when the TMS table has one (`tms_columns.id`), otherwise by position.
+- **Validity**: the view `daten.tms_data_valid` (logger and sensor end dates, local days) plus
+  `skip_days_after_start` (default 1: installation day). Dates are Europe/Berlin days; all output is UTC.
+- **Positions**: point geometry, transformed from its SRID to the site CRS (SRID 0 = site CRS); a Z value
+  becomes the logger `z` (DTM check). `xy_sd` per `locality_id_quality` via `xy_sd_by_quality`.
+- **Privileges**: the dump grants `geouser` SELECT on `daten.*`, `plots.*` and `externe_daten.*`, but not
+  on `lut.versuchsflaechen` / `lut.behandlungseinheiten` (to be granted). Without them, names are left
+  empty and the site is chosen by its numeric id.
+- **T1 reference without soil temperature**: the reference only removes the weather signal shared by all
+  loggers. In the synthetic site (true T1 driven by soil temperature), t2m instead of stl1 lowered the
+  daily CV R² of T1 (max 0.79 → 0.66, mean 0.70 → 0.46). The spatial R² of the logger offsets, which is
+  what the maps carry, was unchanged (max 0.88 → 0.87, mean 0.81 → 0.81). With t2m, ΔT1 reads as
+  "soil at −8 cm minus air", the same quantity as for T2/T3.
+- **Geoid grids**: `data/external/proj/` is registered with pyproj. With `vertical_crs` set, `prepare` stops
+  if the exact conversion is unavailable (PROJ would otherwise use a ballpark conversion and leave heights
+  ~48 m off). `inspect` only reports it.
+- **ERA5 (Open-Meteo)**: `forcing.reference: db` averages the t2m of the linked points after a lapse-rate
+  correction from each point's `elevation` (the height Open-Meteo downscaled it to) to the site elevation.
+  There is no soil temperature, so T1 also uses t2m. `forcing.radiation: db` takes hourly GHI, finds its
+  time-stamp convention by correlation with clear-sky GHI (Open-Meteo: mean of the preceding hour), keeps
+  the hourly energy but uses the clear-sky shape within each hour (15 min), and splits with Erbs. CAMS
+  remains the preferred radiation source (satellite clouds, measured direct/diffuse split).
+- **Tests** load the real schema into a throwaway PostGIS cluster (unix socket in the pytest temp dir)
+  with the dump's grants. Downstream check: the synthetic site converted into a snapshot reproduces
+  the calibration (T3 max CV R² 0.657 vs 0.663, T2 max 0.817 vs 0.818).

@@ -2,7 +2,8 @@
 # Input paths are read in place (read-only); outputs go to work/<site>/.
 site: siteA
 crs: EPSG:25832          # projected CRS of LAS, TMS coordinates and logger table
-vertical_crs: null       # height datum of the LAS, e.g. EPSG:7837 (DHHN2016); null = ellipsoidal/as is
+vertical_crs: null       # LAS height datum: null = ellipsoidal (DJI Terra without geoid model); EPSG:7837 = DHHN2016
+                         # (then the geoid grid de_bkg_gcg2016.tif must be in data/external/proj/, see README)
 
 inputs:
   laz:
@@ -11,10 +12,22 @@ inputs:
   trajectory_format: auto
   ortho: /path/to/site/ortho.tif
   ortho_time: "2025-07-15T09:30:00Z"                     # UTC, for `voxsol validate`
-  tms: /path/to/site/tms_long.csv                        # long format: x, y, timestamp, value, height
+  # TMS data and logger table: with a `database` section both default to the snapshot written by
+  # `voxsol db` (work/<site>/db/). Without one, give a long-format file:
+  tms: null                # e.g. /path/to/site/tms_long.csv with x, y, timestamp, value, height
   tms_columns: {x: x, y: y, time: timestamp, value: value, height: height}
   tms_timezone: UTC
   loggers: null            # optional CSV: x, y [, id, z (RTK ground height), xy_sd, reference]
+
+database:                  # PostgreSQL (schema docs/db/schema.sql); connection: scripts/db.sh set ...
+  service: voxsol          # libpq service in secrets/pg_service.conf
+  versuchsflaeche: SA      # site: id, short, safe or clean name (`voxsol db --check` lists them)
+  behandlungseinheiten: [] # optional treatment filter (short names); [] = all loggers of the site
+  met_source: null         # externe_daten.met_points.source; null = the only one linked
+  skip_days_after_start: 1 # drop the installation day of every deployment
+  exclude_locality_quality: []   # e.g. [unsicher]: drop deployments with this locality_id_quality
+  xy_sd_by_quality: {}     # logger position sd [m] per locality_id_quality (else prepare.logger_xy_sd)
+  ghi_label: auto          # hourly GHI time stamp: end (Open-Meteo) | start | instant | auto (clear-sky check)
 
 period:                    # logger campaign; drives sun geometry, forcing and maps
   start: 2025-05-01
@@ -51,21 +64,21 @@ trace:
   sensor_heights: [0.02, 0.15]
 
 forcing:
-  radiation: cams          # cams | era5 | clearsky (offline)
+  radiation: cams          # cams | db (ERA5 GHI from the database, Erbs split) | era5 (needs time_step 1h) | clearsky
   time_step: 15min
-  reference: era5land      # era5land | loggers | file
+  reference: db            # db (ERA5 t2m from the database) | era5land | loggers | file
   reference_loggers: []    # logger ids used when reference = loggers (or flag them in the logger table)
   reference_file: null     # CSV: time, t2m, skt, stl1 [deg C], UTC
   reference_grid_elevation: null   # ERA5-Land cell elevation [m] -> lapse-rate correction to the site
 
 horizon:
-  dem: null                # external DEM (state DGM1 / Copernicus GLO-30) for distant ridges
+  dem: null                # external DEM covering the site +- max_dist_m, 10-30 m (Copernicus GLO-30 / state DGM)
   dem_res: 10.0
   max_dist_m: 20000
 
 calibration:               # read by R/run_calibration.R
   sensors: {T3: "15", T2: "2", T1: "-8", VWC: "-0-10cm"}
-  reference_vars: {T3: t2m, T2: t2m, T1: stl1}
+  reference_vars: {T3: t2m, T2: t2m, T1: t2m}   # reference: db has t2m only (era5land also has stl1, skt)
   responses: [T3, T2, T1]
   stats: [max, mean]
   us_candidates: [us_index_15cm, us_index_2cm, ground_lift, ground_roughness, rgb_exg]

@@ -101,6 +101,8 @@ def step_prepare(cfg: SiteConfig) -> dict:
     from voxsol.preprocess.pulses import build_pulses
 
     p = cfg.prepare
+    if cfg.database is not None and not Path(cfg.inputs.tms).exists():
+        raise FileNotFoundError(f"{cfg.inputs.tms} missing: run `voxsol db <config>` first (database snapshot)")
     pts = read_points(cfg)
     xyz = pts["xyz"]
     report: dict = {"points_read": int(len(xyz))}
@@ -144,6 +146,11 @@ def step_prepare(cfg: SiteConfig) -> dict:
     if cfg.inputs.tms or cfg.inputs.loggers:
         loggers = logger_table(cfg.inputs.tms, cfg.inputs.loggers, p.logger_xy_sd,
                                cfg.forcing.reference_loggers, cfg.inputs.tms_columns)
+        inside = loggers["x"].between(dtm.x0, dtm.x1) & loggers["y"].between(dtm.y0, dtm.y1)
+        if not inside.all():
+            report["loggers_outside_scan"] = loggers.loc[~inside, "id"].tolist()
+            _log(f"{(~inside).sum()} loggers outside the scanned area dropped: {report['loggers_outside_scan']}")
+            loggers = loggers[inside]
         loggers.to_csv(cfg.workdir / "loggers.csv", index=False)
         report["loggers"] = int(len(loggers))
         if "z" in loggers.columns and loggers["z"].notna().any():
@@ -252,13 +259,20 @@ def step_forcing(cfg: SiteConfig) -> dict:
         rad = fz.cams(start, end, lat, lon, alt, f.time_step)
     elif f.radiation == "era5":
         rad = fz.era5_radiation(start, end, lat, lon)
+    elif f.radiation == "db":
+        rad, label_check = fz.db_radiation(cfg.db_dir, start, end, lat, lon, alt, f.time_step,
+                                           cfg.database.ghi_label)
     else:
         rad = fz.clearsky(start, end, lat, lon, alt, f.time_step, f.cloudiness, f.seed)
     rad.index.name = "time"
     rad.to_parquet(cfg.workdir / "forcing.parquet")
     report = {"lat": lat, "lon": lon, "altitude": alt, **rad.attrs, "intervals": int(len(rad))}
+    if f.radiation == "db":
+        report.update(label_check)
     if f.reference == "era5land":
         ref = fz.era5land_reference(start, end, lat, lon, alt, f.reference_grid_elevation, f.lapse_rate)
+    elif f.reference == "db":
+        ref = fz.db_reference(cfg.db_dir, alt, f.lapse_rate)
     elif f.reference == "file":
         ref = fz.reference_from_file(f.reference_file)
     else:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 
@@ -66,7 +67,7 @@ def inspect_trajectory(cfg: SiteConfig, pts, adjusted: bool, n_dist: int) -> dic
         "lon_range": [float(traj["lon"].min()), float(traj["lon"].max())],
         "h_ell_range": [float(traj["h_ell"].min()), float(traj["h_ell"].max())],
     }
-    traj_xyz, proj = to_projected(traj, cfg.crs, cfg.vertical_crs)
+    traj_xyz, proj = to_projected(traj, cfg.crs, cfg.vertical_crs, strict=False)  # report, don't abort
     out["projection"] = proj
     if pts is None or "gps_time" not in set(pts.point_format.dimension_names):
         return out
@@ -127,8 +128,8 @@ def assess(report: dict) -> list[str]:
         notes.append(f"Trajectory could not be used: {traj['error']}")
     else:
         if traj["projection"]["unavailable_grids"]:
-            notes.append(f"Missing PROJ grids {traj['projection']['unavailable_grids']}: download into "
-                         "data/external/proj/ for an exact height datum conversion.")
+            notes.append(f"Missing PROJ grids {traj['projection']['unavailable_grids']}: download from "
+                         "https://cdn.proj.org/ into data/external/proj/ (prepare stops without them).")
         ov = traj.get("sample_time_overlap")
         if ov is not None:
             notes.append(f"Trajectory covers {ov:.1%} of sampled points ({traj.get('time_base')}).")
@@ -158,7 +159,7 @@ def run_inspect(cfg: SiteConfig, sample_n: int = 3_000_000, n_dist: int = 20_000
             report["trajectory"] = inspect_trajectory(cfg, first_pts, first_info["adjusted_gps_time"], n_dist)
         except Exception as exc:  # report and continue; inspection must not abort on one bad input
             report["trajectory"] = {"error": f"{type(exc).__name__}: {exc}"}
-    if cfg.inputs.loggers:
+    if cfg.inputs.loggers and Path(cfg.inputs.loggers).exists():
         mins = [min(f["header"]["mins"][i] for f in report["files"]) for i in range(3)]
         maxs = [max(f["header"]["maxs"][i] for f in report["files"]) for i in range(3)]
         report["loggers"] = inspect_loggers(cfg, (mins, maxs))

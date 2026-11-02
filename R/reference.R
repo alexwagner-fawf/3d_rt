@@ -1,12 +1,13 @@
-# Macroclimate reference per sensor: ERA5-Land / own file (from Python) or open-area reference loggers.
+# Macroclimate reference per sensor: ERA5-Land / database / own file (from Python) or open-area reference loggers.
 
 reference_long <- function(cfg, tms, loggers) {
   src <- cfg$forcing$reference
   vars <- unlist(cfg$calibration$reference_vars)
-  if (src %in% c("era5land", "file")) {
+  if (src %in% c("era5land", "file", "db")) {
     ref <- read_parquet_dt(file.path(cfg$workdir, "reference.parquet"))
     missing <- setdiff(vars, names(ref))
-    if (length(missing)) stop("reference lacks columns: ", paste(missing, collapse = ", "))
+    if (length(missing)) stop("reference lacks columns: ", paste(missing, collapse = ", "),
+                              if (src == "db") " (the database reference has t2m only: set calibration.reference_vars)")
     out <- data.table::rbindlist(lapply(names(vars), function(s)
       data.table::data.table(sensor = s, time = ref$time, ref = ref[[vars[[s]]]])))
   } else {

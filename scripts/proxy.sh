@@ -10,8 +10,8 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 file="${VOXSOL_PROXY_FILE:-$root/secrets/proxy.env}"
-urls=("https://pypi.org/simple/" "https://cloud.r-project.org/" "https://api.soda-solardata.com/"
-      "https://cds.climate.copernicus.eu/api" "https://cdn.proj.org/")
+urls=("https://pypi.org/simple/" "https://files.pythonhosted.org/" "https://cloud.r-project.org/"
+      "https://api.soda-solardata.com/" "https://cds.climate.copernicus.eu/api" "https://cdn.proj.org/")
 
 mask() { sed -E 's#(://)[^/@]+@#\1***@#g'; }
 in_git() { git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; }

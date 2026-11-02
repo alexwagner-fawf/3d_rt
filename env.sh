@@ -53,6 +53,11 @@ if [ -f "$VOXSOL_PROXY_FILE" ]; then
   unset _voxsol_line _voxsol_key _voxsol_val _voxsol_ca _voxsol_out _voxsol_base _voxsol_f
 fi
 
+# --- PostgreSQL (voxsol db, psql, RPostgres): connection service and password file from secrets/ ---
+# See config/pg_service.example.conf and scripts/db.sh. PostgreSQL does not use the HTTP proxy.
+[ -f "$VOXSOL_ROOT/secrets/pg_service.conf" ] && export PGSERVICEFILE="$VOXSOL_ROOT/secrets/pg_service.conf"
+[ -f "$VOXSOL_ROOT/secrets/pgpass" ] && export PGPASSFILE="$VOXSOL_ROOT/secrets/pgpass"
+
 if [ -f "$VOXSOL_ROOT/.venv/bin/activate" ]; then
   # shellcheck disable=SC1091
   source "$VOXSOL_ROOT/.venv/bin/activate"
