@@ -24,3 +24,6 @@ secrets/
 
 # local copy of the database export (already on the live system; schema copy in docs/db/)
 rstudio-export/
+
+# deployment bundles (git bundle create dist/...)
+dist/
