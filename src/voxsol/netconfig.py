@@ -23,6 +23,7 @@ TEST_URLS = {
     "CAMS (SoDa)": "https://api.soda-solardata.com/",
     "CDS (ERA5)": "https://cds.climate.copernicus.eu/api",
     "PROJ grids": "https://cdn.proj.org/",
+    "GitHub (setup.sh --standalone-python)": "https://github.com/",
 }
 
 

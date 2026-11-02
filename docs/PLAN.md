@@ -250,6 +250,13 @@ in `docs/db/schema.sql`, from the user's `rstudio-export/`). Design:
   daily CV R² of T1 (max 0.79 → 0.66, mean 0.70 → 0.46). The spatial R² of the logger offsets, which is
   what the maps carry, was unchanged (max 0.88 → 0.87, mean 0.81 → 0.81). With t2m, ΔT1 reads as
   "soil at −8 cm minus air", the same quantity as for T2/T3.
+- **Target Ubuntu 20.04** (2026-11-02): all 51 wheels resolve for glibc 2.31 with Python 3.11/3.12
+  (highest requirement glibc 2.28). The system has Python 3.8 and deadsnakes no longer builds for focal,
+  so `setup.sh --standalone-python` fetches python-build-standalone 3.12.15 (release 20261003, SHA-256
+  pinned) into `.python/`. R 3.6 is too old (nanoparquet needs R ≥ 4.0, current mgcv ≥ 4.4 but mgcv
+  ships with R); CRAN's focal-cran40 repo has R 4.5.x. `VOXSOL_CRAN` selects Posit Package Manager
+  binaries to avoid compiling terra. The standalone interpreter itself was not executed on the
+  development machine (archive checksum and layout verified).
 - **Geoid grids**: `data/external/proj/` is registered with pyproj. With `vertical_crs` set, `prepare` stops
   if the exact conversion is unavailable (PROJ would otherwise use a ballpark conversion and leave heights
   ~48 m off). `inspect` only reports it.

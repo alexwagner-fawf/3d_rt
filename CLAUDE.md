@@ -39,6 +39,13 @@ libpq service `secrets/pg_service.conf` + `secrets/pgpass` (`scripts/db.sh`). Co
 - `tests/`: pytest with analytic and synthetic scenes (`source env.sh && pytest`, ~30 s).
 - Demo: `voxsol synth && voxsol run config/synthetic.yaml && Rscript R/run_calibration.R config/synthetic.yaml`.
 
+## Target system
+Ubuntu 20.04 behind the corporate proxy (Python 3.8 and R 3.6 by default). `./setup.sh --standalone-python`
+puts a pinned, checksum-verified Python 3.12 into `.python/`; R ≥ 4.0 comes from CRAN's Ubuntu repo
+(admin); `VOXSOL_CRAN` (in `.Renviron`) switches R installs to Posit Package Manager binaries.
+Wheels must stay installable on glibc 2.31 (check new dependencies with `pip install --dry-run
+--only-binary=:all: --platform manylinux_2_31_x86_64 ...`; pip needs the older manylinux tags listed too).
+
 ## Status
 - Built and verified on synthetic data only (as of 2026-11-02); no real data has been inspected yet.
   Next steps on the real system: `voxsol db --check`, `voxsol db`, `voxsol inspect` (pulse grouping,

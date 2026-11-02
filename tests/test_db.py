@@ -121,7 +121,9 @@ def copy_met(conn) -> None:
 def pg(tmp_path_factory):
     base = tmp_path_factory.mktemp("pg")
     data, sock, secrets = base / "data", base / "s", base / "secrets"
-    sock.mkdir()
+    if len(str(sock / ".s.PGSQL.5433")) > 107:
+        pytest.skip(f"repository path too long for a PostgreSQL unix socket (max 107 bytes): {sock}")
+    sock.mkdir(mode=0o700)  # trust auth: only the user running the tests may reach the socket
     secrets.mkdir()
 
     def run(*args):
@@ -129,7 +131,8 @@ def pg(tmp_path_factory):
 
     run(f"{PG_BIN}/initdb", "-D", data, "-U", "owner", "--auth=trust", "-E", "UTF8", "--locale=C")
     with open(data / "postgresql.conf", "a") as fh:
-        fh.write(f"listen_addresses = ''\nunix_socket_directories = '{sock}'\nport = 5433\nfsync = off\n")
+        fh.write(f"listen_addresses = ''\nunix_socket_directories = '{sock}'\nunix_socket_permissions = 0700\n"
+                 "port = 5433\nfsync = off\n")
     run(f"{PG_BIN}/pg_ctl", "-D", data, "-l", base / "server.log", "-w", "start")
     try:
         admin = psycopg.connect(host=str(sock), port=5433, dbname="postgres", user="owner", autocommit=True)

@@ -1,5 +1,6 @@
 # environments and caches (created by setup.sh / env.sh)
 .venv/
+.python/
 r-lib/
 .cache/
 __pycache__/

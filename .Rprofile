@@ -11,7 +11,13 @@ local({
              R_USER_CACHE_DIR = file.path(root, ".cache", "xdg", "R"))
   dir.create(user_lib, showWarnings = FALSE)
   .libPaths(unique(c(user_lib, .libPaths())))
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
+  cran <- Sys.getenv("VOXSOL_CRAN", "https://cloud.r-project.org")  # set via setup.sh (.Renviron)
+  options(repos = c(CRAN = cran))
+  if (grepl("__linux__", cran, fixed = TRUE)) {
+    # Posit Package Manager serves Linux binaries only to user agents with R version and platform
+    options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(),
+                                    paste(getRversion(), R.version["platform"], R.version["arch"], R.version["os"])))
+  }
 
   proxy_file <- Sys.getenv("VOXSOL_PROXY_FILE", file.path(root, "secrets", "proxy.env"))
   if (file.exists(proxy_file)) {
