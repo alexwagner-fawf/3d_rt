@@ -110,10 +110,19 @@ else
     cat("repository:", getOption("repos")[["CRAN"]], "\n")
     if (length(missing)) install.packages(missing, lib = .libPaths()[1], Ncpus = 4) else cat("all present\n")'
 fi
-if [ "$r_ok" = 1 ] && ! Rscript -e 'quit(status = !requireNamespace("terra", quietly = TRUE))' >/dev/null 2>&1; then
-  echo "terra could not be installed. From source it needs the GDAL, GEOS and PROJ development packages" \
-       "(sudo apt install libgdal-dev libgeos-dev libproj-dev); precompiled packages (VOXSOL_CRAN, see README)" \
-       "need the runtime libraries (Ubuntu 20.04: libgdal26 libgeos-c1v5 libproj15)" >&2
+if [ "$r_ok" = 1 ]; then
+  still_missing="$(Rscript -e 'p <- c("data.table", "mgcv", "terra", "yaml", "nanoparquet")
+    cat(p[!vapply(p, requireNamespace, logical(1), quietly = TRUE)])' 2>/dev/null)"
+  for pkg in $still_missing; do
+    case "$pkg" in
+      terra) echo "terra could not be installed. From source it needs the GDAL, GEOS and PROJ development packages" \
+                  "(sudo apt install libgdal-dev libgeos-dev libproj-dev); precompiled packages (VOXSOL_CRAN, see README)" \
+                  "need the runtime libraries (Ubuntu 20.04: libgdal26 libgeos-c1v5 libproj15)" >&2 ;;
+      mgcv) echo "mgcv is missing: it ships with R as a recommended package (sudo apt install r-recommended);" \
+                 "the current CRAN version needs R >= 4.4" >&2 ;;
+      *) echo "$pkg could not be installed: compiling R packages needs build tools (sudo apt install r-base-dev)" >&2 ;;
+    esac
+  done
 fi
 
 echo "== done. Next: source env.sh && pytest"

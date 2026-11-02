@@ -256,7 +256,9 @@ in `docs/db/schema.sql`, from the user's `rstudio-export/`). Design:
   pinned) into `.python/`. R 3.6 is too old (nanoparquet needs R ≥ 4.0, current mgcv ≥ 4.4 but mgcv
   ships with R); CRAN's focal-cran40 repo has R 4.5.x. `VOXSOL_CRAN` selects Posit Package Manager
   binaries to avoid compiling terra. The standalone interpreter itself was not executed on the
-  development machine (archive checksum and layout verified).
+  development machine (archive checksum and layout verified). The target has R 4.3.2 with terra: a scan
+  of R's NEWS found no base function used by `R/` that is newer than 4.3; the packages setup.sh may add
+  (data.table, yaml, nanoparquet) need R ≥ 4.0 at most and have no dependencies.
 - **Geoid grids**: `data/external/proj/` is registered with pyproj. With `vertical_crs` set, `prepare` stops
   if the exact conversion is unavailable (PROJ would otherwise use a ballpark conversion and leave heights
   ~48 m off). `inspect` only reports it.

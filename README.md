@@ -22,8 +22,8 @@ Requirements (target system: Ubuntu 20.04, see below):
 - **System**: Linux x86_64 with bash, git, curl. All Python wheels install on glibc ≥ 2.28 (Ubuntu 20.04: 2.31).
 - **Python 3.11 or 3.12**: `setup.sh` takes the first of python3.12, python3.11, python3 that fits, or
   downloads one (`--standalone-python`). 3.13 has no binary wheel for `cloth-simulation-filter`.
-- **R ≥ 4.0** (nanoparquet; developed with 4.5.2): missing packages (data.table, mgcv, terra, yaml,
-  nanoparquet) are installed into `r-lib/`. On Linux CRAN packages are compiled; `terra` then needs
+- **R ≥ 4.0** (nanoparquet; developed with 4.5.2, target has 4.3.2): missing packages (data.table,
+  terra, yaml, nanoparquet) are installed into `r-lib/`; mgcv ships with R. On Linux CRAN packages are compiled; `terra` then needs
   the GDAL, GEOS and PROJ development packages, unless it is already installed or precompiled
   packages are used (`VOXSOL_CRAN`, see below).
 - **No PostgreSQL installation**: the client library comes with the `psycopg` wheel. A local server
@@ -46,16 +46,21 @@ needed for `radiation: cams|era5` or `reference: era5land`): copy `config/creden
 `secrets/credentials.yaml`.
 
 ### Ubuntu 20.04
-Ubuntu 20.04 ships Python 3.8 and R 3.6, both too old, and the deadsnakes PPA no longer builds Python
-for 20.04.
+Target system: Ubuntu 20.04 with R 4.3.2 and terra already installed, admin rights available. So only
+Python needs attention: 20.04 ships Python 3.8, and the deadsnakes PPA no longer builds Python for it.
+On a fresh 20.04, R (3.6) would also be too old.
 - **Python**: `./setup.sh --standalone-python` downloads a pinned Python 3.12 build
   (python-build-standalone, SHA-256 checked) into `.python/` and builds `.venv` on it. No admin rights
   are needed; the proxy must let `github.com` and its download host (`release-assets.githubusercontent.com`)
   through. `setup.sh` without the flag stops with this hint if it finds no suitable Python.
-- **R**: if `R --version` shows 3.6, an admin installs a current R from CRAN's Ubuntu repository
+- **R 4.3.2** works: the R code uses no base functions newer than 4.3 (`%||%` is defined in the repo),
+  and `setup.sh` only adds data.table, yaml and nanoparquet if missing. They have no dependencies but are
+  compiled, so build tools are needed (`sudo apt install r-base-dev`). mgcv is the version bundled with
+  R (current CRAN mgcv needs R ≥ 4.4).
+- **R on a fresh 20.04**: if `R --version` shows 3.6, an admin installs a current R from CRAN's Ubuntu repository
   (`focal-cran40`, R 4.5.x): https://cloud.r-project.org/bin/linux/ubuntu/. Behind the proxy, apt needs
   its own setting, e.g. `/etc/apt/apt.conf.d/95proxy` with `Acquire::https::Proxy "http://proxy.example.com:8080/";`.
-- **terra** (if not installed yet): either compile it (`sudo apt install libgdal-dev libgeos-dev libproj-dev`;
+- **terra** (already installed on the target; otherwise): either compile it (`sudo apt install libgdal-dev libgeos-dev libproj-dev`;
   focal has GDAL 3.0.4, enough for terra), or use precompiled packages from Posit Package Manager, which
   only need the runtime libraries `libgdal26 libgeos-c1v5 libproj15`:
   `VOXSOL_CRAN=https://packagemanager.posit.co/cran/__linux__/focal/latest ./setup.sh`
@@ -65,10 +70,13 @@ Typical sequence on the target:
 ```bash
 git clone voxsol.bundle voxsol && cd voxsol      # path short enough, e.g. ~/voxsol
 scripts/proxy.sh set http://proxy.example.com:8080 --no-proxy "localhost,127.0.0.1,.example.local" [--ca corp-root-ca.pem]
-./setup.sh --standalone-python                  # optionally with VOXSOL_CRAN=... in front
+./setup.sh --standalone-python                  # Python 3.12 into .python/, venv, R packages
 scripts/db.sh set db.example.local forschung your_user
 source env.sh && pytest && scripts/proxy.sh check && scripts/db.sh check
+voxsol synth && voxsol run config/synthetic.yaml && Rscript R/run_calibration.R config/synthetic.yaml --no-maps
 ```
+The last line runs the whole chain on the synthetic site (a few minutes). It is the first end-to-end
+run with the standalone Python and R 4.3.2, which were not available on the development machine.
 
 ### External data and network access
 | what | needed when | source, location |

@@ -40,9 +40,11 @@ libpq service `secrets/pg_service.conf` + `secrets/pgpass` (`scripts/db.sh`). Co
 - Demo: `voxsol synth && voxsol run config/synthetic.yaml && Rscript R/run_calibration.R config/synthetic.yaml`.
 
 ## Target system
-Ubuntu 20.04 behind the corporate proxy (Python 3.8 and R 3.6 by default). `./setup.sh --standalone-python`
-puts a pinned, checksum-verified Python 3.12 into `.python/`; R ≥ 4.0 comes from CRAN's Ubuntu repo
-(admin); `VOXSOL_CRAN` (in `.Renviron`) switches R installs to Posit Package Manager binaries.
+Ubuntu 20.04 behind the corporate proxy, R 4.3.2 with terra installed, admin rights available (user,
+2026-11-02). System Python is 3.8: `./setup.sh --standalone-python` puts a pinned, checksum-verified
+Python 3.12 into `.python/`. `VOXSOL_CRAN` (in `.Renviron`) can switch R installs to Posit Package
+Manager binaries. Keep the R code compatible with R 4.3: no base functions from 4.4+ (`%||%` is defined
+in `R/io_voxsol.R`), no new dependencies that need R ≥ 4.4 (current CRAN mgcv/Matrix do; use the bundled ones).
 Wheels must stay installable on glibc 2.31 (check new dependencies with `pip install --dry-run
 --only-binary=:all: --platform manylinux_2_31_x86_64 ...`; pip needs the older manylinux tags listed too).
 
