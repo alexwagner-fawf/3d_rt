@@ -26,8 +26,8 @@ Any new network access must use requests/libcurl so these settings apply; never 
 
 ## Database
 TMS-4 data, logger positions (`plots.be_verjuengungskreise_pt`) and ERA5 via Open-Meteo
-(`externe_daten`) come from PostgreSQL/PostGIS (schema dump `docs/db/schema.sql`, original export in
-`rstudio-export/`). Only `voxsol db` connects (`src/voxsol/io/db.py`, read-only session) and writes the
+(`externe_daten`) come from PostgreSQL/PostGIS (schema dump `docs/db/schema.sql`; the original export
+`rstudio-export/` is local and gitignored, it already exists on the live system). Only `voxsol db` connects (`src/voxsol/io/db.py`, read-only session) and writes the
 snapshot `work/<site>/db/`; everything else reads the snapshot. Never write to the database. Connection:
 libpq service `secrets/pg_service.conf` + `secrets/pgpass` (`scripts/db.sh`). Confirmed by the user
 (2026-11-02): `tms_deployments.locality_id` = `verjkr_id`; SELECT on the `lut` name tables will be granted.

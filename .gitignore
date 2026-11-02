@@ -21,3 +21,6 @@ secrets/
 .Rhistory
 .RData
 .Rproj.user/
+
+# local copy of the database export (already on the live system; schema copy in docs/db/)
+rstudio-export/
