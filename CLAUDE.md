@@ -48,6 +48,10 @@ in `R/io_voxsol.R`), no new dependencies that need R ≥ 4.4 (current CRAN mgcv/
 Wheels must stay installable on glibc 2.31 (check new dependencies with `pip install --dry-run
 --only-binary=:all: --platform manylinux_2_31_x86_64 ...`; pip needs the older manylinux tags listed too).
 
+## Deployment
+`origin` is the GitHub repository; the target clones it and updates with `git pull` (commits must be
+pushed to reach it). `dist/` bundles are only an offline fallback.
+
 ## Status
 - First real site run on the target (2026-11-03): `prepare` and `voxelize` succeeded (34.5 M points,
   680 M voxels); `understory` ran out of memory reading the 5 Gpx ortho at once, fixed by streaming it

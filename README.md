@@ -30,10 +30,12 @@ Requirements (target system: Ubuntu 20.04, see below):
   with PostGIS is only used by the database tests, which are skipped without one (and when the repo
   path is too long for a unix socket, > ~80 characters).
 
-The repository has no remote yet. To copy it: `git bundle create voxsol.bundle --all` on this machine,
-then `git clone voxsol.bundle voxsol` on the target (only committed work is included).
+The repository is on GitHub (`origin`). Clone it on the target and update it with `git pull`; behind the
+proxy, `scripts/proxy.sh set` also configures git. A clone contains only committed files: `secrets/`,
+`.venv/`, `.python/`, `work/` and `data/` are created on each machine. Without access to GitHub, copy a
+bundle instead (`git bundle create dist/voxsol.bundle --all`, then `git clone` / `git pull` from that file).
 ```bash
-git clone <repo or voxsol.bundle> voxsol && cd voxsol
+git clone https://github.com/alexwagner-fawf/3d_rt.git voxsol && cd voxsol
 scripts/proxy.sh set http://proxy.example.com:8080 --no-proxy "localhost,127.0.0.1" [--ca corp-root-ca.pem]  # if behind a proxy
 ./setup.sh [python3.12]   # .venv (pip), R packages into r-lib/, machine-specific .Renviron
 scripts/db.sh set db.example.local forschung your_user   # PostgreSQL connection (asks for the password)
@@ -68,7 +70,8 @@ On a fresh 20.04, R (3.6) would also be too old.
 
 Typical sequence on the target:
 ```bash
-git clone voxsol.bundle voxsol && cd voxsol      # path short enough, e.g. ~/voxsol
+git clone https://github.com/alexwagner-fawf/3d_rt.git ~/voxsol && cd ~/voxsol   # short path
+# later updates: git pull (local secrets/, .venv/, work/ stay untouched)
 scripts/proxy.sh set http://proxy.example.com:8080 --no-proxy "localhost,127.0.0.1,.example.local" [--ca corp-root-ca.pem]
 ./setup.sh --standalone-python                  # Python 3.12 into .python/, venv, R packages
 scripts/db.sh set db.example.local forschung your_user
