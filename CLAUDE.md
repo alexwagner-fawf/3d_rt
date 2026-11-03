@@ -49,9 +49,11 @@ Wheels must stay installable on glibc 2.31 (check new dependencies with `pip ins
 --only-binary=:all: --platform manylinux_2_31_x86_64 ...`; pip needs the older manylinux tags listed too).
 
 ## Status
-- Built and verified on synthetic data only (as of 2026-11-02); no real data has been inspected yet.
-  Next steps on the real system: `voxsol db --check`, `voxsol db`, `voxsol inspect` (pulse grouping,
-  sbet time base, height datum). Geoid grids go to `data/external/proj/` (registered with pyproj).
+- First real site run on the target (2026-11-03): `prepare` and `voxelize` succeeded (34.5 M points,
+  680 M voxels); `understory` ran out of memory reading the 5 Gpx ortho at once, fixed by streaming it
+  (`rgb.ortho_blocks`). Remaining steps not yet run on real data. Geoid grids go to `data/external/proj/`.
+- The target machine has less RAM than the development machine: never read a whole orthomosaic, DEM
+  or other large raster into memory; stream it in windows (`rgb.ortho_blocks`, `horizon.load_dem`).
 - TMS-4 data: PostgreSQL (`voxsol db`, tested against the schema dump only) or a long-format file
   x, y, timestamp, value, height (15, 2, -8, "-0-10cm"), EPSG:25832.
 

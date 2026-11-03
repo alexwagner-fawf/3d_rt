@@ -63,6 +63,11 @@ trace:
   understory_k: 0.5        # only for the uncalibrated first-guess maps
   sensor_heights: [0.02, 0.15]
 
+understory:
+  ortho_res: null          # ortho read resolution [m]; null = native (exact). The ortho is streamed in blocks,
+                           # peak memory ~0.8 GB whatever its size; coarser values only save CPU time
+  ortho_block_px: 2000000  # pixels per block (~150 bytes each); lower it on machines with little RAM
+
 forcing:
   radiation: cams          # cams | db (ERA5 GHI from the database, Erbs split) | era5 (needs time_step 1h) | clearsky
   time_step: 15min

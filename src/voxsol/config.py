@@ -123,6 +123,14 @@ class ForcingParams(BaseModel):
     reference_grid_elevation: float | None = Field(None, description="ERA5-Land cell elevation [m] for lapse correction")
 
 
+class UnderstoryParams(BaseModel):
+    ortho_res: float | None = Field(None, gt=0, description="Orthomosaic read resolution [m] for the indices and the "
+                                                            "shadow check; null = native (exact). Coarser is faster "
+                                                            "but averages RGB before the ratio indices")
+    ortho_block_px: int = Field(2_000_000, ge=10_000, description="Working pixels per ortho block "
+                                                                  "(peak memory ~150 bytes per pixel)")
+
+
 class HorizonParams(BaseModel):
     dem: str | None = Field(None, description="External DEM for the far horizon (read-only)")
     dem_res: float = Field(10.0, gt=0, description="Resampling resolution of the external DEM [m]")
@@ -167,6 +175,7 @@ class SiteConfig(BaseModel):
     grid: GridParams = GridParams()
     voxel: VoxelParams = VoxelParams()
     trace: TraceParams = TraceParams()
+    understory: UnderstoryParams = UnderstoryParams()
     forcing: ForcingParams = ForcingParams()
     horizon: HorizonParams = HorizonParams()
     calibration: CalibrationParams = CalibrationParams()

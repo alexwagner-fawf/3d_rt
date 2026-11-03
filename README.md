@@ -38,7 +38,7 @@ scripts/proxy.sh set http://proxy.example.com:8080 --no-proxy "localhost,127.0.0
 ./setup.sh [python3.12]   # .venv (pip), R packages into r-lib/, machine-specific .Renviron
 scripts/db.sh set db.example.local forschung your_user   # PostgreSQL connection (asks for the password)
 source env.sh             # every new shell: caches/tmp inside the repo, proxy, DB service, activates .venv
-pytest                    # 35 tests (~30 s; the database tests need a local PostgreSQL + PostGIS, else skipped)
+pytest                    # 39 tests (~30 s; the database tests need a local PostgreSQL + PostGIS, else skipped)
 scripts/proxy.sh check    # PyPI, CRAN, CAMS, CDS, PROJ, GitHub reachable?   scripts/db.sh check: database
 ```
 R uses existing packages from your library; new ones go to `r-lib/`. Credentials for CAMS/ERA5 (only
@@ -186,8 +186,11 @@ test the chain end to end but say nothing about the strength of effects at your 
 ## Known limitations / to check with real data
 - **DTM in dense herbs**: merged echoes lift the CSF ground (synthetic: +0.5 m under 0.6–0.95 m herbs).
   Provide RTK `z` of the loggers so `prepare` reports the DTM bias at each logger.
-- Runtime/memory at 20 ha × 500 pts/m² is extrapolated, not measured (SOR and CSF on ~100 M points
-  are the likely bottlenecks).
+- Runtime/memory: first real site (2026-11-03, ~560 × 485 m, 34.5 M points): `prepare` took ~5 min
+  (CSF), `voxelize` built 680 M voxels (each float32 voxel array ~2.7 GB). The orthomosaic (5 Gpx at
+  ~0.8 cm) is streamed in blocks (`understory.ortho_block_px`): peak ~0.8 GB regardless of its size,
+  ~16 s per 320 Mpx on the development machine. Later steps keep the voxel grid (~2.7 GB) and daily
+  maps (~0.5 GB each) in memory; the per-pixel sun-bin transmittance is a memory-mapped file.
 - Database export: tested against the schema dump with synthetic rows, not yet against the real
   database. Run `voxsol db --check` first: height labels, geometry SRIDs, ERA5 sources.
 - CAMS/ERA5/ERA5-Land download code is untested here (no credentials). ERA5-Land grid elevation for

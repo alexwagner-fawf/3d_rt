@@ -16,14 +16,9 @@ def shadow_check(cfg: SiteConfig, surface_height: float = 0.3) -> dict:
     understory top. Darkness is an Otsu threshold on brightness; it also reacts to dark materials,
     so agreement well above chance (kappa) rather than perfection is expected.
     """
-    import rasterio
-    from rasterio.enums import Resampling
-    from rasterio.transform import from_origin
-    from rasterio.warp import reproject
-
     from voxsol.directions import sun_positions, unit_vector
     from voxsol.pipeline import _maps_dir, load_grid, map_template, site_location
-    from voxsol.rgb import otsu_threshold
+    from voxsol.rgb import ortho_brightness, otsu_threshold
     from voxsol.trace import macro_top, target_heights, trace
 
     if not (cfg.inputs.ortho and cfg.inputs.ortho_time):
@@ -40,13 +35,7 @@ def shadow_check(cfg: SiteConfig, surface_height: float = 0.3) -> dict:
                  unit_vector(sp["azimuth"].to_numpy(), sp["elevation"].to_numpy()), macro=macro_top(grid))
     T = T[:, 0].reshape(tpl.ny, tpl.nx)
     Raster(T.astype(np.float32), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / "shadow_model_ortho_time.tif")
-    with rasterio.open(cfg.inputs.ortho) as src:
-        bright = src.read([1, 2, 3]).astype(np.float64).mean(0)
-        dst = np.full((tpl.ny, tpl.nx), np.nan)
-        reproject(bright, dst, src_transform=src.transform, src_crs=src.crs,
-                  dst_transform=from_origin(tpl.x0, tpl.y1, tpl.res, tpl.res), dst_crs=cfg.crs,
-                  resampling=Resampling.average, dst_nodata=np.nan)
-    bright = np.flipud(dst)
+    bright = ortho_brightness(cfg.inputs.ortho, tpl, cfg.understory.ortho_res, cfg.understory.ortho_block_px)
     ch = Raster.read(_maps_dir(cfg) / "canopy_canopy_height.tif").sample(xy[:, 0], xy[:, 1]).reshape(tpl.ny, tpl.nx)
     use = (ch <= cfg.grid.h_cut) & np.isfinite(bright)
     dark = bright < otsu_threshold(bright[use])

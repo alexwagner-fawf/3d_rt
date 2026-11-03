@@ -259,6 +259,14 @@ in `docs/db/schema.sql`, from the user's `rstudio-export/`). Design:
   development machine (archive checksum and layout verified). The target has R 4.3.2 with terra: a scan
   of R's NEWS found no base function used by `R/` that is newer than 4.3; the packages setup.sh may add
   (data.table, yaml, nanoparquet) need R ≥ 4.0 at most and have no dependencies.
+- **Orthomosaic streaming** (2026-11-03, first real site): the 72586 × 69309 px ortho (~0.8 cm) needed
+  112 GiB as one float64 array. `rgb.ortho_blocks` now reads row blocks over the map extent (WarpedVRT
+  if the CRS differs) and accumulates per map pixel with `bincount`; the Otsu threshold for green cover
+  comes from a pre-pass over ~20 spread blocks. Default is native resolution, which gives the same
+  indices as before (tested against a brute-force computation). Reading at a coarser `ortho_res`
+  averages RGB before the ratio indices, which weights bright soil over dark vegetation (ExG up to
+  ~0.05 lower in mixed cells), so it is only a speed option. Peak memory ~0.8 GB with 2 M-pixel blocks
+  and a 128 MB GDAL cache; 320 Mpx in 16 s.
 - **Geoid grids**: `data/external/proj/` is registered with pyproj. With `vertical_crs` set, `prepare` stops
   if the exact conversion is unavailable (PROJ would otherwise use a ballpark conversion and leave heights
   ~48 m off). `inspect` only reports it.

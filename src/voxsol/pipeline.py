@@ -211,7 +211,8 @@ def step_understory(cfg: SiteConfig) -> dict:
                                 last_xy=pulses.last_xyz()[:, :2], last_ground=pulses.last_ground)
     layers.update(ground_surface_metrics(low["xyz"][low["ground"]], grid.dtm, tpl))
     if cfg.inputs.ortho:
-        layers.update(ortho_indices(cfg.inputs.ortho, tpl))
+        layers.update(ortho_indices(cfg.inputs.ortho, tpl, cfg.understory.ortho_res, cfg.understory.ortho_block_px,
+                                    log=_log))
     for name, arr in layers.items():
         Raster(arr.astype(np.float32), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / f"{name}.tif")
     report = {"layers": sorted(layers), "pixels": int(tpl.nx * tpl.ny)}
