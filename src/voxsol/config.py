@@ -143,9 +143,11 @@ class HorizonParams(BaseModel):
 class CalibrationParams(BaseModel):
     """Read by the R calibration (R/run_calibration.R)."""
 
-    sensors: dict[str, str] = Field(
-        default_factory=lambda: {"T3": "15", "T2": "2", "T1": "-8", "VWC": "-0-10cm"},
-        description="Sensor name -> value of the TMS `height` column")
+    sensors: dict[str, str | list[str]] = Field(
+        default_factory=lambda: {"T3": "15", "T2": "2", "T1": "-8", "VWC": ["-0-10cm", "-0-15cm"]},
+        description="Sensor name -> value(s) of the TMS `height` column. Compared after normalization "
+                    "(spaces and 'cm' ignored, 'air' = above ground, 'soil' = negative), so '15' matches "
+                    "'air 15 cm' and '-8' matches 'soil 8 cm'")
     reference_vars: dict[str, str] = Field(
         default_factory=lambda: {"T3": "t2m", "T2": "t2m", "T1": "stl1"},
         description="Reference variable per temperature sensor (ERA5-Land / file columns)")
@@ -183,6 +185,9 @@ class SiteConfig(BaseModel):
 
     @model_validator(mode="after")
     def _sources(self):
+        from voxsol.io.loggers import sensor_by_height_key
+
+        sensor_by_height_key(self.calibration.sensors)  # one sensor per height label
         f = self.forcing
         if self.database is None and "db" in (f.radiation, f.reference):
             raise ValueError("forcing.radiation/reference = db needs a `database` section")

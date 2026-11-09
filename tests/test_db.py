@@ -78,7 +78,7 @@ def seed_sql() -> str:
         ('SA101_2', 101, true, NULL, ST_GeomFromEWKT('SRID=25832;POINT ({X0 + 30} {Y0 + 15})')),
         ('SA102_1', 102, true, NULL, ST_GeomFromEWKT('SRID=4326;POINT ({lon} {lat})')),
         ('SB201_1', 201, true, NULL, ST_GeomFromEWKT('SRID=25832;POINT ({X0 + 9000} {Y0 + 9000})'));
-    INSERT INTO daten.tms_lut_height VALUES (1, '15'), (2, '2'), (3, '-8'), (4, '-0-10cm');
+    INSERT INTO daten.tms_lut_height VALUES (1, 'air 15 cm'), (2, 'air 2 cm'), (3, 'soil 8 cm'), (4, 'soil 0-15 cm');
     INSERT INTO daten.tms_lut_sensor_name VALUES (1, 'TMS_T3'), (2, 'TMS_T2'), (3, 'TMS_T1'), (4, 'TMS_moist');
     INSERT INTO daten.tms_deployments (deployment_id, serial_number, locality_id, locality_id_quality, start_date,
                                        collect_date, true_end_date, logger_intact)
@@ -202,7 +202,8 @@ def test_overview_checks_the_assumptions(pg, monkeypatch):
     assert ov["relations"] == "all readable" and ov["read_only"] == "on"
     join = ov["locality_id join (expected: all deployments match a verjkr_id)"].iloc[0]
     assert (join["deployments"], join["match_verjkr_id"]) == (6, 5)
-    assert ov["heights (calibration.sensors maps these to T3/T2/T1/VWC)"]["height"].tolist() == ["15", "2", "-8", "-0-10cm"]
+    assert ov["heights (calibration.sensors maps these to T3/T2/T1/VWC)"]["height"].tolist() == ["air 15 cm", "air 2 cm", "soil 8 cm",
+                                                                                   "soil 0-15 cm"]
     assert set(ov["plot geometry (be_verjuengungskreise_pt)"]["srid"]) == {25832, 4326}
     assert set(ov["ERA5 points per source"]["source"]) == {"open-meteo_era5", "open-meteo_era5_land"}
     assert "permission denied" in ov["lut tables"][0]  # geouser cannot read lut.* (as in the dump)
@@ -228,16 +229,18 @@ def test_export_snapshot(snapshot):
     tms = pd.read_parquet(cfg.db_dir / "tms_long.parquet")
     assert tms["timestamp"].dt.tz is not None and not tms.duplicated(["logger_id", "timestamp", "height"]).any()
     assert tms["timestamp"].max() < pd.Timestamp("2025-06-19", tz="UTC")  # period end
-    t3 = tms[(tms["logger_id"] == "SA101_1") & (tms["height"] == "15")].set_index("timestamp")["value"]
+    t3 = tms[(tms["logger_id"] == "SA101_1") & (tms["height"] == "air 15 cm")].set_index("timestamp")["value"]
     assert t3.index.min() == pd.Timestamp("2025-06-01 22:00", tz="UTC")  # installation day 06-01 (CEST) dropped
     assert (t3.index[1:] - t3.index[:-1] == pd.Timedelta("15min")).all()  # continuous across the logger swap
     swap = pd.Timestamp("2025-06-10 22:00", tz="UTC")                     # S9 from 06-11 local (its day 1 dropped)
     assert (t3[t3.index < swap] == 11).all() and (t3[t3.index >= swap] == 21).all()  # 10 * deployment + sensor
     last = tms.groupby(["logger_id", "height"])["timestamp"].max()
-    assert last["SA101_2", "15"] == pd.Timestamp("2025-06-15 21:45", tz="UTC")   # logger true_end_date
-    assert last["SA102_1", "-8"] == pd.Timestamp("2025-06-12 21:45", tz="UTC")   # sensor end (T1 only)
-    assert last["SA102_1", "15"] == pd.Timestamp("2025-06-18 23:45", tz="UTC")
-    assert "heights_not_in_calibration_sensors" not in report["tms"]
+    assert last["SA101_2", "air 15 cm"] == pd.Timestamp("2025-06-15 21:45", tz="UTC")   # logger true_end_date
+    assert last["SA102_1", "soil 8 cm"] == pd.Timestamp("2025-06-12 21:45", tz="UTC")   # sensor end (T1 only)
+    assert last["SA102_1", "air 15 cm"] == pd.Timestamp("2025-06-18 23:45", tz="UTC")
+    assert "heights_not_in_calibration_sensors" not in report["tms"]  # default mapping covers the db labels
+    assert report["tms"]["height_to_sensor"] == {"air 15 cm": "T3", "air 2 cm": "T2", "soil 0-15 cm": "VWC",
+                                                 "soil 8 cm": "T1"}
 
     met = pd.read_parquet(cfg.db_dir / "met_data.parquet")
     assert set(met["met_point_id"]) == {1, 2} and set(met["variable"]) == {"t2m", "ghi", "precip"}
@@ -298,7 +301,7 @@ def test_r_reads_snapshot(snapshot):
     cfg <- list(inputs = list(tms = "{cfg.inputs.tms}", tms_timezone = "UTC",
                               tms_columns = list(x = "x", y = "y", time = "timestamp", value = "value",
                                                  height = "height", id = "logger_id")),
-                calibration = list(sensors = list(T3 = "15", T2 = "2", T1 = "-8", VWC = "-0-10cm")))
+                calibration = list(sensors = list(T3 = "15", T2 = "2", T1 = "-8", VWC = "-0-15cm")))  # file spelling
     tms <- read_tms_long(cfg)
     tms <- suppressWarnings(attach_logger_ids(tms, data.table(id = c("SA101_1", "SA102_1"))))
     cat(inherits(tms$time, "POSIXct"), attr(tms$time, "tzone"), "\\n")

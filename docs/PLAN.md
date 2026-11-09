@@ -276,6 +276,18 @@ in `docs/db/schema.sql`, from the user's `rstudio-export/`). Design:
   time-stamp convention by correlation with clear-sky GHI (Open-Meteo: mean of the preceding hour), keeps
   the hourly energy but uses the clear-sky shape within each hour (15 min), and splits with Erbs. CAMS
   remains the preferred radiation source (satellite clouds, measured direct/diffuse split).
+- **TMS height labels** (2026-11-09, first real calibration): the database labels heights `air 15 cm`,
+  `air 2 cm`, `soil 8 cm`, `soil 0-15 cm`; the defaults expected the file spelling `15, 2, -8, -0-10cm`, so
+  every value was dropped and the calibration crashed late with an unclear error. Labels are now
+  compared after normalization (signed cm; `air` = +, `soil` = −; spaces and `cm` ignored), a sensor may
+  list several labels, the default VWC accepts `-0-10cm` and `-0-15cm`, and the R driver stops early with
+  the available labels (and their `sensor_name`, count, median) when nothing maps. Soil moisture in
+  percent is divided by 100; raw TMS counts (median > 100) are skipped with a warning, because the
+  conversion needs a soil-specific calibration (myClim `mc_calc_vwc`). `db_export.json` lists
+  `height_to_sensor` and the value range per label.
+- **Aspect** (2026-11-09): `aspect_deg.tif` held the upslope direction (180° off); the irradiance itself
+  used the normals and was correct. Fixed (`trace.slope_aspect`), and `irradiance` rewrites slope/aspect
+  so existing runs are corrected without re-tracing.
 - **Tests** load the real schema into a throwaway PostGIS cluster (unix socket in the pytest temp dir)
   with the dump's grants. Downstream check: the synthetic site converted into a snapshot reproduces
   the calibration (T3 max CV R² 0.657 vs 0.663, T2 max 0.817 vs 0.818).

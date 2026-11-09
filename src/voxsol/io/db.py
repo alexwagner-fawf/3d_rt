@@ -354,8 +354,10 @@ def fetch_tms(conn, dep: pd.DataFrame, t0: pd.Timestamp, t1: pd.Timestamp) -> tu
     report["rows"] = int(len(out))
     if len(out):
         report["time_range_utc"] = [str(out["timestamp"].min()), str(out["timestamp"].max())]
-        report["values_per_height"] = (out.groupby(["height", "sensor_name"]).size().rename("n").reset_index()
-                                       .to_dict(orient="records"))
+        # value range per label shows the units (e.g. soil moisture as raw counts, percent or m3/m3)
+        report["values_per_height"] = (out.groupby(["height", "sensor_name"])["value"]
+                                       .agg(n="size", min="min", median="median", max="max").round(3)
+                                       .reset_index().to_dict(orient="records"))
     return out, report
 
 
@@ -418,8 +420,12 @@ def export_site(cfg) -> dict:
         loggers = logger_rows(dep, cfg)
         tms, report["tms"] = fetch_tms(conn, dep, t0, t1)
         points, met, report["met"] = fetch_met(conn, loggers, db.met_source, t0 - pad, t1 + pad)
-    mapped = set(map(str, cfg.calibration.sensors.values()))
-    unmapped = sorted(set(tms["height"]) - mapped)
+    from voxsol.io.loggers import height_key, sensor_by_height_key
+
+    by_key = sensor_by_height_key(cfg.calibration.sensors)
+    labels = sorted(set(tms["height"]))
+    report["tms"]["height_to_sensor"] = {h: by_key.get(height_key(h)) for h in labels}
+    unmapped = [h for h in labels if height_key(h) not in by_key]
     if unmapped:
         report["tms"]["heights_not_in_calibration_sensors"] = unmapped
     report["loggers"] = {"n": int(len(loggers)), "with_z": int(loggers["z"].notna().sum()),

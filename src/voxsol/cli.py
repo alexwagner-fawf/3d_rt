@@ -110,6 +110,10 @@ def _db(config: Path | None, check: bool, service: str | None) -> None:
         report = export_site(cfg)
         typer.echo(json.dumps(report, indent=2, default=str))
         typer.echo(f"Snapshot written to {cfg.db_dir}")
+        unmapped = report["tms"].get("heights_not_in_calibration_sensors")
+        if unmapped:
+            typer.echo(f"warning: TMS heights {unmapped} match no sensor in calibration.sensors and will be "
+                       f"dropped by the calibration (current: {cfg.calibration.sensors})", err=True)
         return
     name = service or (cfg.database.service if cfg and cfg.database else "voxsol")
     with connect(name) as conn:

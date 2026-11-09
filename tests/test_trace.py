@@ -3,7 +3,7 @@ import pytest
 
 from voxsol.directions import SunBins, sky_directions, slope_weights, unit_vector
 from voxsol.grid import Raster, VoxelGrid
-from voxsol.trace import Horizon, disk_points, surface_normals, target_heights, trace
+from voxsol.trace import Horizon, disk_points, slope_aspect, surface_normals, target_heights, trace
 
 DX, DZ, H0, ZMAX = 0.25, 0.25, 1.0, 20.0
 
@@ -98,3 +98,14 @@ def test_sun_bins_cover_daylight_only():
     assert len(bins) == 3
     assert bins.index[0] == bins.index[1] and bins.index[3] == -1
     assert bins.elevation.min() == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("rise_x, rise_y, facing", [(0.0, 0.2, 180.0), (0.0, -0.2, 0.0), (-0.2, 0.0, 90.0),
+                                                    (0.2, 0.0, 270.0)])
+def test_aspect_is_the_downslope_direction(rise_x, rise_y, facing):
+    """A plane rising to the north faces south (180 deg); rising to the west faces east (90 deg)."""
+    yy, xx = np.mgrid[0:40, 0:40] * 0.5 + 0.25  # row 0 = south
+    dtm = Raster((rise_x * xx + rise_y * yy).astype(np.float32), 0.0, 0.0, 0.5, "EPSG:25832")
+    slope, aspect = slope_aspect(surface_normals(dtm, np.array([10.0]), np.array([10.0])))
+    assert abs(slope[0] - np.degrees(np.arctan(0.2))) < 0.01
+    assert abs((aspect[0] - facing + 180) % 360 - 180) < 0.01

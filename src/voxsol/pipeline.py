@@ -380,13 +380,20 @@ def step_trace(cfg: SiteConfig, chunk: int = 2048) -> dict:
     shape = (tpl.ny, tpl.nx)
     for name, arr in (("svf_h", svf_h), ("svf_s", svf_s), ("edge_fraction", edge_frac)):
         Raster(arr.reshape(shape), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / f"{name}.tif")
-    slope = np.degrees(np.arccos(np.clip(normals[:, 2], -1, 1))).reshape(shape)
-    aspect = (np.degrees(np.arctan2(-normals[:, 0], -normals[:, 1])) % 360).reshape(shape)
-    Raster(slope.astype(np.float32), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / "slope_deg.tif")
-    Raster(aspect.astype(np.float32), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / "aspect_deg.tif")
+    write_terrain_maps(cfg, normals, tpl)
     report.update(map_pixels=int(n_pix), sun_bins=int(len(bins)), edge_fraction_mean=float(edge_frac.mean()))
     _write_json(cfg.workdir / "trace.json", report)
     return report
+
+
+def write_terrain_maps(cfg: SiteConfig, normals: np.ndarray, tpl: Raster) -> None:
+    """slope_deg / aspect_deg from the smoothed-DTM normals of the map pixels (also refreshed by irradiance)."""
+    from voxsol.trace import slope_aspect
+
+    slope, aspect = slope_aspect(normals)
+    for name, arr in (("slope_deg", slope), ("aspect_deg", aspect)):
+        Raster(arr.reshape(tpl.ny, tpl.nx).astype(np.float32), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(
+            _maps_dir(cfg) / f"{name}.tif")
 
 
 # ------------------------------------------------------------------------------------ irradiance
@@ -435,6 +442,10 @@ def step_irradiance(cfg: SiteConfig) -> dict:
     site_daily = daily_site(sky)
     site_daily.to_csv(cfg.workdir / "site_daily.csv", index_label="date")
     report: dict = {"days": int(len(site_daily))}
+    mt = np.load(cfg.workdir / "map_trace.npz")
+    x0, y0, res, nx, ny = mt["tpl"]
+    tpl = Raster(np.zeros((int(ny), int(nx)), np.float32), x0, y0, res, cfg.crs)
+    write_terrain_maps(cfg, mt["normals"], tpl)  # before logger_static samples maps/*.tif
 
     lt_path = cfg.workdir / "logger_trace.npz"
     if lt_path.exists():
@@ -448,9 +459,6 @@ def step_irradiance(cfg: SiteConfig) -> dict:
         logger_static(cfg, loggers, lt).to_csv(cfg.workdir / "logger_static.csv", index=False)
         report["logger_rows"] = int(len(series))
 
-    mt = np.load(cfg.workdir / "map_trace.npz")
-    x0, y0, res, nx, ny = mt["tpl"]
-    tpl = Raster(np.zeros((int(ny), int(nx)), np.float32), x0, y0, res, cfg.crs)
     T_bins = np.load(cfg.workdir / "map_Tbins.npy", mmap_mode="r")
     W, days = sun_weights(sky, mt["bin_index"], T_bins.shape[1])
     maps = daily_maps(T_bins, W, mt["normals"], mt["svf_h"], mt["svf_s"], site_daily["iso"].to_numpy())

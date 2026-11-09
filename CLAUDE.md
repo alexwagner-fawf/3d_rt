@@ -55,7 +55,12 @@ pushed to reach it). `dist/` bundles are only an offline fallback.
 ## Status
 - First real site run on the target (2026-11-03): `prepare` and `voxelize` succeeded (34.5 M points,
   680 M voxels); `understory` ran out of memory reading the 5 Gpx ortho at once, fixed by streaming it
-  (`rgb.ortho_blocks`). Remaining steps not yet run on real data. Geoid grids go to `data/external/proj/`.
+  (`rgb.ortho_blocks`). Geoid grids go to `data/external/proj/`.
+- First real calibration attempt (2026-11-09): all TMS values were dropped because the database height
+  labels (`air 15 cm`, `air 2 cm`, `soil 8 cm`, `soil 0-15 cm`) did not match `calibration.sensors`. Labels
+  are now normalized (`height_key` in `io/loggers.py` and `R/loggers.R`, same rules, tested for parity).
+  Soil-moisture units in the database are unknown (raw counts are skipped with a warning). Output
+  meanings: `docs/OUTPUTS.md` (keep it in sync when adding or changing outputs).
 - The target machine has less RAM than the development machine: never read a whole orthomosaic, DEM
   or other large raster into memory; stream it in windows (`rgb.ortho_blocks`, `horizon.load_dem`).
 - TMS-4 data: PostgreSQL (`voxsol db`, tested against the schema dump only) or a long-format file

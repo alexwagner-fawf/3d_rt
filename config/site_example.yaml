@@ -82,7 +82,9 @@ horizon:
   max_dist_m: 20000
 
 calibration:               # read by R/run_calibration.R
-  sensors: {T3: "15", T2: "2", T1: "-8", VWC: "-0-10cm"}
+  # sensor -> TMS height label(s); compared without spaces/"cm", "air" = above ground, "soil" = below,
+  # so "15" == "air 15 cm" and "-8" == "soil 8 cm". Database labels:
+  sensors: {T3: "air 15 cm", T2: "air 2 cm", T1: "soil 8 cm", VWC: "soil 0-15 cm"}
   reference_vars: {T3: t2m, T2: t2m, T1: t2m}   # reference: db has t2m only (era5land also has stl1, skt)
   responses: [T3, T2, T1]
   stats: [max, mean]

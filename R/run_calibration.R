@@ -31,6 +31,8 @@ tms <- read_tms_long(cfg)
 tms <- attach_logger_ids(tms, loggers)
 tms <- qc_tms(tms)
 msg("TMS: ", uniqueN(tms$logger_id), " loggers, ", nrow(tms), " values (QC removed ", attr(tms, "qc_removed"), ")")
+if (!nrow(tms)) stop("no TMS values left after matching logger ids and QC", call. = FALSE)
+print(tms[, .(loggers = uniqueN(logger_id), values = .N, first = min(time), last = max(time)), keyby = sensor])
 ref <- reference_long(cfg, tms, loggers)
 tms <- add_delta(tms, ref)
 if (cfg$forcing$reference == "loggers") tms <- tms[!logger_id %in% loggers[reference == TRUE, id]]
@@ -45,15 +47,29 @@ site_daily <- read_site_daily(cfg)
 
 # daily responses first, then release the large 15-min table (keeps forked CV workers small)
 responses <- list()
-for (s in cfg$calibration$responses) for (st in cfg$calibration$stats)
-  responses[[paste(s, st, sep = "_")]] <- daily_response(tms, s, st, cfg$calibration$min_day_coverage)
+for (s in cfg$calibration$responses) {
+  if (!s %in% tms$sensor) {
+    warning("no ", s, " data (check calibration.sensors and calibration.reference_vars): ", s, " skipped", call. = FALSE)
+    next
+  }
+  for (st in cfg$calibration$stats)
+    responses[[paste(s, st, sep = "_")]] <- daily_response(tms, s, st, cfg$calibration$min_day_coverage)
+}
 rm(tms); invisible(gc())
 
 results <- list()
 for (s in cfg$calibration$responses) {
   for (st in cfg$calibration$stats) {
-    msg("calibrating ", s, " daily ", st)
-    res <- calibrate_one(cfg, responses[[paste(s, st, sep = "_")]], irr, base, static, vwc, s, st)
+    resp <- responses[[paste(s, st, sep = "_")]]
+    if (is.null(resp)) next
+    n_log <- uniqueN(resp$logger_id)
+    if (n_log < 3) {
+      warning(s, " daily ", st, ": ", n_log, " loggers with complete days and a reference value (need >= 3): skipped",
+              call. = FALSE)
+      next
+    }
+    msg("calibrating ", s, " daily ", st, " (", n_log, " loggers, ", nrow(resp), " logger-days)")
+    res <- calibrate_one(cfg, resp, irr, base, static, vwc, s, st)
     res$best$sensor <- s
     tag <- paste(s, st, sep = "_")
     saveRDS(res$fit, file.path(cfg$outdir, sprintf("model_%s.rds", tag)))
@@ -68,6 +84,7 @@ for (s in cfg$calibration$responses) {
   }
 }
 
+if (!length(results)) stop("nothing calibrated (see the warnings above)", call. = FALSE)
 cv <- rbindlist(lapply(results, `[[`, "cv"))
 prof <- rbindlist(lapply(results, `[[`, "profile"))
 chosen <- rbindlist(lapply(results, function(r) {

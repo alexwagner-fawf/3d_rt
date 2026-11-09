@@ -128,3 +128,10 @@ def surface_normals(dtm: Raster, x: np.ndarray, y: np.ndarray, smooth_m: float =
     dzdy = sm.sample(x, y)
     n = np.column_stack([-dzdx, -dzdy, np.ones_like(dzdx)])
     return n / np.linalg.norm(n, axis=1, keepdims=True)
+
+
+def slope_aspect(normals: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Slope [deg] and aspect [deg clockwise from north, direction the slope faces (downslope)]."""
+    slope = np.degrees(np.arccos(np.clip(normals[:, 2], -1, 1)))
+    aspect = np.degrees(np.arctan2(normals[:, 0], normals[:, 1])) % 360
+    return slope, aspect

@@ -5,7 +5,7 @@
 repo_root <- function() Sys.getenv("VOXSOL_ROOT", unset = getwd())
 
 calibration_defaults <- list(
-  sensors = list(T3 = "15", T2 = "2", T1 = "-8", VWC = "-0-10cm"),
+  sensors = list(T3 = "15", T2 = "2", T1 = "-8", VWC = c("-0-10cm", "-0-15cm")),  # see height_key()
   reference_vars = list(T3 = "t2m", T2 = "t2m", T1 = "stl1"),
   us_candidates = c("us_index_15cm", "us_index_2cm", "ground_lift", "ground_roughness", "rgb_exg"),
   responses = c("T3", "T2", "T1"),

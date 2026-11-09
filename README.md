@@ -161,11 +161,12 @@ To start from a later step: `voxsol run config/siteA.yaml --start trace`.
 | `sbet.out` / `sbet.txt` | enable trajectory export in DJI Terra; without it beams are assumed vertical |
 | orthomosaic | RGB indices (ExG, GCC, GLI, VARI, Otsu green cover); `ortho_time` for `validate` |
 | PostgreSQL (`database` section) | TMS-4 data, logger positions and ERA5 via `voxsol db` (see above); replaces the two rows below |
-| TMS long table | `x, y, timestamp, value, height[, id]` with heights `15, 2, -8, -0-10cm` (mapping in `calibration.sensors`) |
+| TMS long table | `x, y, timestamp, value, height[, id]` with heights `15, 2, -8, -0-10cm` or `air 15 cm, air 2 cm, soil 8 cm, soil 0-15 cm` (mapping in `calibration.sensors`; labels are compared without spaces/`cm`, `air` = +, `soil` = −). Soil moisture as m³/m³ or percent; raw TMS counts are not converted and skipped |
 | logger table (optional) | `x, y[, id, z, xy_sd, reference]`: RTK uncertainty per logger, RTK ground height (DTM check), open-area reference flags |
 | external DEM (optional) | far horizon for mountain sites |
 
 ### Outputs (`work/<site>/`)
+Every file and map layer (meaning, units, range, caveats) is explained in **[docs/OUTPUTS.md](docs/OUTPUTS.md)**.
 - `dtm.tif`, `voxels.npz`, `maps/*.tif`: DTM, extinction grid, static layers (canopy PAI green/non-green,
   canopy height, sky view horizontal/slope, understory descriptors, RGB indices, slope/aspect, edge fraction)
 - `logger_irradiance.parquet`: 15-min SW at the top of the understory per logger (direct/diffuse,

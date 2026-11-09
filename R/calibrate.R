@@ -161,6 +161,8 @@ calibrate_one <- function(cfg, resp, irr, base, static, vwc, sensor_name, stat) 
     p <- cv_predict(d, model_terms("full", cov), prof_folds[levels(d$logger_id)])
     sqrt(mean((d$delta - p)^2, na.rm = TRUE))
   }))]
+  if (!any(is.finite(grid$cv_rmse)))
+    stop(sensor_name, " ", stat, ": no model could be fitted in the k profiling (too few loggers or days?)", call. = FALSE)
   best <- grid[which.min(cv_rmse)]
   if (best$k == max(grid$k)) warning(sensor_name, " ", stat, ": best k is at the upper end of k_grid; extend it")
   us_col <- best$us_col

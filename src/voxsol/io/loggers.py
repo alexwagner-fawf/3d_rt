@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,36 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 MATCH_TOL_M = 0.5
+_HEIGHT_RE = re.compile(r"^([+-]?)(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?$")
+
+
+def height_key(label) -> str:
+    """Canonical TMS height label: signed cm, above ground positive, soil negative.
+
+    '15', '+15 cm', 'air 15 cm' -> '15'; '-8', 'soil 8 cm' -> '-8'; '-0-10cm', 'soil 0-10 cm' -> '-0-10'.
+    Labels that do not parse are compared as given (lower case, without spaces).
+    Same rules as height_key() in R/loggers.R.
+    """
+    base = re.sub(r"\s+", "", str(label).strip().lower())
+    s = base.removesuffix("cm")
+    negative = s.startswith(("soil", "boden"))
+    s = re.sub(r"^(air|luft|soil|boden)", "", s)
+    m = _HEIGHT_RE.match(s)
+    if not m:
+        return base
+    num = f"{float(m[2]):g}" + (f"-{float(m[3]):g}" if m[3] else "")
+    return ("-" if negative or m[1] == "-" else "") + num
+
+
+def sensor_by_height_key(sensors: dict) -> dict[str, str]:
+    """calibration.sensors (sensor -> label or list of labels) as height key -> sensor."""
+    out: dict[str, str] = {}
+    for sensor, labels in sensors.items():
+        for label in [labels] if isinstance(labels, (str, int, float)) else labels:
+            key = height_key(label)
+            if out.setdefault(key, sensor) != sensor:
+                raise ValueError(f"calibration.sensors: height '{label}' is given for {out[key]} and {sensor}")
+    return out
 
 
 def sniff_separator(path: str | Path) -> str:
