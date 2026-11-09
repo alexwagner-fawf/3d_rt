@@ -295,6 +295,14 @@ in `docs/db/schema.sql`, from the user's `rstudio-export/`). Design:
   `<projectCrs>` unless `SpatialRefSys/ProjectionsEnabled` = 1. Tested by loading the project in PyQGIS
   3.44 (all layers valid, CRS set), skipped where QGIS is not installed. `insolation/` summaries are
   built month by month from `maps_daily.nc` (monthly sums, period = sum of months).
+- **Area of interest** (2026-11-09): `aoi` = polygon/multipolygon file (fiona; any OGR format/CRS).
+  Points are kept in the AOI's bounding box + `buffer_m` (a rectangle, so the voxel grid has real canopy
+  everywhere and no artificial holes; the shading context equals the existing scan-edge buffer), read in
+  5 M-point chunks with the LAS header bbox used to skip files. Loggers outside the AOI are dropped. Map
+  pixels: AOI rasterized with all_touched, dilated by one pixel, plus 3 x 3 pixels around every logger
+  disk point, so bilinear sampling at loggers never reaches NaN. Only those pixels are traced
+  (`map_trace.npz: pixels`), the irradiance scatters them into full maps (NaN outside). For parts far
+  apart the box (and voxel grid) gets large: `prepare.json` warns when the AOI covers < 25 % of it.
 - **Tests** load the real schema into a throwaway PostGIS cluster (unix socket in the pytest temp dir)
   with the dump's grants. Downstream check: the synthetic site converted into a snapshot reproduces
   the calibration (T3 max CV R² 0.657 vs 0.663, T2 max 0.817 vs 0.818).

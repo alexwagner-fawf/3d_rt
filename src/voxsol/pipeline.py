@@ -48,35 +48,55 @@ def load_grid(cfg: SiteConfig) -> VoxelGrid:
 
 # ------------------------------------------------------------------------------------ prepare
 
-def read_points(cfg: SiteConfig) -> dict:
-    from voxsol.io.las import header_info, scan_angle_deg
-    import laspy
+def read_points(cfg: SiteConfig, region: tuple[float, float, float, float] | None = None) -> dict:
+    """All LAZ points, or only those inside `region` (xmin, ymin, xmax, ymax), read in chunks so that
+    only the kept points are held in memory."""
+    from voxsol.io.las import header_info, iter_chunks, scan_angle_deg
 
+    files = cfg.inputs.laz_files()
+    if not files:
+        raise FileNotFoundError(f"No LAZ files match {cfg.inputs.laz}")
     parts = []
     adjusted = None
-    for path in cfg.inputs.laz_files():
+    n_total = 0
+    for path in files:
         info = header_info(path)
         adjusted = info.adjusted_gps_time if adjusted is None else adjusted
         if info.adjusted_gps_time != adjusted:
             raise ValueError("LAZ files mix GPS time encodings")
-        las = laspy.read(path)
-        part = {"xyz": np.column_stack([las.x, las.y, las.z]).astype(np.float64),
-                "gps_time": np.asarray(las.gps_time, np.float64) if info.has_gps_time else None,
-                "return_number": np.asarray(las.return_number, np.int16),
-                "number_of_returns": np.asarray(las.number_of_returns, np.int16),
-                "classification": np.asarray(las.classification, np.uint8),
-                "rgb": np.column_stack([las.red, las.green, las.blue]) if info.has_rgb else None}
-        sa = scan_angle_deg(las.points)
-        part["scan_angle"] = sa
-        parts.append(part)
-        _log(f"read {path} ({len(las.points):,} points)")
+        if region is not None and (info.maxs[0] < region[0] or info.mins[0] > region[2]
+                                   or info.maxs[1] < region[1] or info.mins[1] > region[3]):
+            n_total += info.point_count
+            _log(f"skip {path} (outside the AOI context box)")
+            continue
+        n_file = n_kept = 0
+        for pts in iter_chunks(path):
+            x, y = np.asarray(pts.x, np.float64), np.asarray(pts.y, np.float64)
+            n_file += len(x)
+            keep = np.ones(len(x), bool) if region is None else (
+                (x >= region[0]) & (x <= region[2]) & (y >= region[1]) & (y <= region[3]))
+            if not keep.any():
+                continue
+            sa = scan_angle_deg(pts)
+            parts.append({
+                "xyz": np.column_stack([x[keep], y[keep], np.asarray(pts.z, np.float64)[keep]]),
+                "gps_time": np.asarray(pts.gps_time, np.float64)[keep] if info.has_gps_time else None,
+                "return_number": np.asarray(pts.return_number, np.int16)[keep],
+                "number_of_returns": np.asarray(pts.number_of_returns, np.int16)[keep],
+                "classification": np.asarray(pts.classification, np.uint8)[keep],
+                "rgb": np.column_stack([pts.red, pts.green, pts.blue])[keep] if info.has_rgb else None,
+                "scan_angle": sa[keep] if sa is not None else None})
+            n_kept += int(keep.sum())
+        n_total += n_file
+        _log(f"read {path} ({n_file:,} points" + (f", {n_kept:,} in the AOI context box)" if region else ")"))
     if not parts:
-        raise FileNotFoundError(f"No LAZ files match {cfg.inputs.laz}")
+        raise ValueError("no LAZ points inside the AOI context box (check aoi and the LAZ CRS)")
     out = {}
     for key in parts[0]:
         vals = [p[key] for p in parts]
         out[key] = None if any(v is None for v in vals) else np.concatenate(vals)
     out["adjusted_gps_time"] = adjusted
+    out["points_in_files"] = n_total
     return out
 
 
@@ -100,12 +120,20 @@ def step_prepare(cfg: SiteConfig) -> dict:
                                           sor_filter)
     from voxsol.preprocess.pulses import build_pulses
 
+    from voxsol.aoi import context_box, points_in, read_aoi, summary, write_aoi
+
     p = cfg.prepare
     if cfg.database is not None and not Path(cfg.inputs.tms).exists():
         raise FileNotFoundError(f"{cfg.inputs.tms} missing: run `voxsol db <config>` first (database snapshot)")
-    pts = read_points(cfg)
+    aoi = read_aoi(cfg.aoi, cfg.crs) if cfg.aoi is not None else None
+    write_aoi(cfg.workdir, aoi)  # later steps read this copy (and remove a stale one when aoi is unset)
+    pts = read_points(cfg, context_box(aoi, cfg.buffer_m) if aoi else None)
     xyz = pts["xyz"]
     report: dict = {"points_read": int(len(xyz))}
+    if aoi:
+        report["aoi"] = summary(aoi, cfg.buffer_m) | {"points_in_files": int(pts["points_in_files"])}
+        _log(f"AOI {report['aoi']['area_ha']} ha; {len(xyz):,} of {pts['points_in_files']:,} points in its "
+             f"context box ({report['aoi']['context_box_ha']} ha)")
     keep = sor_filter(xyz) if p.sor else np.ones(len(xyz), bool)
     report["points_noise"] = int((~keep).sum())
     for key in ("xyz", "gps_time", "return_number", "number_of_returns", "classification", "rgb", "scan_angle"):
@@ -150,7 +178,13 @@ def step_prepare(cfg: SiteConfig) -> dict:
         if not inside.all():
             report["loggers_outside_scan"] = loggers.loc[~inside, "id"].tolist()
             _log(f"{(~inside).sum()} loggers outside the scanned area dropped: {report['loggers_outside_scan']}")
-            loggers = loggers[inside]
+        if aoi is not None:
+            out_aoi = inside & ~points_in(aoi, loggers["x"].to_numpy(), loggers["y"].to_numpy())
+            if out_aoi.any():
+                report["loggers_outside_aoi"] = loggers.loc[out_aoi, "id"].tolist()
+                _log(f"{out_aoi.sum()} loggers outside the AOI dropped: {report['loggers_outside_aoi']}")
+            inside &= ~out_aoi
+        loggers = loggers[inside]
         loggers.to_csv(cfg.workdir / "loggers.csv", index=False)
         report["loggers"] = int(len(loggers))
         if "z" in loggers.columns and loggers["z"].notna().any():
@@ -196,6 +230,31 @@ def map_template(cfg: SiteConfig, grid: VoxelGrid) -> Raster:
     return map_pixels(grid, cfg.trace.map_res, cfg.buffer_m)
 
 
+def map_mask(cfg: SiteConfig, tpl: Raster) -> np.ndarray | None:
+    """Map pixels to compute when an AOI is set (row 0 = south), else None (all pixels)."""
+    from voxsol.aoi import load_aoi, pixel_mask
+
+    fc = load_aoi(cfg)
+    if fc is None:
+        return None
+    disk = None
+    path = cfg.workdir / "loggers.csv"
+    if path.exists():
+        loggers = pd.read_csv(path)
+        if len(loggers):
+            disk, _ = logger_points(cfg, loggers)
+    return pixel_mask(fc, tpl, disk)
+
+
+def _full(values: np.ndarray, pix: np.ndarray | None, tpl: Raster) -> np.ndarray:
+    """Values of the computed pixels as a full (ny, nx) map, NaN elsewhere."""
+    if pix is None:
+        return values.reshape(tpl.ny, tpl.nx).astype(np.float32)
+    out = np.full(tpl.ny * tpl.nx, np.nan, np.float32)
+    out[pix] = values
+    return out.reshape(tpl.ny, tpl.nx)
+
+
 def step_understory(cfg: SiteConfig) -> dict:
     from voxsol.preprocess.pulses import Pulses
     from voxsol.rgb import ortho_indices
@@ -213,9 +272,15 @@ def step_understory(cfg: SiteConfig) -> dict:
     if cfg.inputs.ortho:
         layers.update(ortho_indices(cfg.inputs.ortho, tpl, cfg.understory.ortho_res, cfg.understory.ortho_block_px,
                                     log=_log))
+    mask = map_mask(cfg, tpl)
     for name, arr in layers.items():
-        Raster(arr.astype(np.float32), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / f"{name}.tif")
+        arr = arr.astype(np.float32)
+        if mask is not None:
+            arr[~mask] = np.nan
+        Raster(arr, tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / f"{name}.tif")
     report = {"layers": sorted(layers), "pixels": int(tpl.nx * tpl.ny)}
+    if mask is not None:
+        report["pixels_in_aoi"] = int(mask.sum())
     _write_json(cfg.workdir / "understory.json", report)
     return report
 
@@ -338,8 +403,10 @@ def step_trace(cfg: SiteConfig, chunk: int = 2048) -> dict:
     report: dict = {"sky_dirs": int(len(sky))}
 
     loggers_csv = cfg.workdir / "loggers.csv"
-    if loggers_csv.exists():
-        loggers = pd.read_csv(loggers_csv)
+    loggers = pd.read_csv(loggers_csv) if loggers_csv.exists() else None
+    if loggers is None or loggers.empty:
+        (cfg.workdir / "logger_trace.npz").unlink(missing_ok=True)  # no stale logger results
+    else:
         xy, owner = logger_points(cfg, loggers)
         xyz = target_heights(grid, xy)
         normals = surface_normals(grid.dtm, xy[:, 0], xy[:, 1])
@@ -353,8 +420,12 @@ def step_trace(cfg: SiteConfig, chunk: int = 2048) -> dict:
         report["logger_points"] = int(len(xy))
 
     tpl = map_template(cfg, grid)
+    mask = map_mask(cfg, tpl)
+    pix = np.flatnonzero(mask.ravel()) if mask is not None else None
     xs, ys = tpl.centers()
     xy = np.column_stack([xs.ravel(), ys.ravel()])
+    if pix is not None:
+        xy = xy[pix]
     xyz = target_heights(grid, xy)
     normals = surface_normals(grid.dtm, xy[:, 0], xy[:, 1])
     bins = SunBins(sun["azimuth"].to_numpy(), sun["elevation"].to_numpy(), cfg.trace.sun_bin_deg)
@@ -376,24 +447,30 @@ def step_trace(cfg: SiteConfig, chunk: int = 2048) -> dict:
     T_bins.flush()
     np.savez(cfg.workdir / "map_trace.npz", bin_index=bins.index, bin_az=bins.azimuth, bin_el=bins.elevation,
              normals=normals, svf_h=svf_h, svf_s=svf_s, edge=edge_frac,
-             tpl=np.array([tpl.x0, tpl.y0, tpl.res, tpl.nx, tpl.ny]))
-    shape = (tpl.ny, tpl.nx)
+             tpl=np.array([tpl.x0, tpl.y0, tpl.res, tpl.nx, tpl.ny]),
+             pixels=pix if pix is not None else np.zeros(0, np.int64), all_pixels=pix is None)
     for name, arr in (("svf_h", svf_h), ("svf_s", svf_s), ("edge_fraction", edge_frac)):
-        Raster(arr.reshape(shape), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / f"{name}.tif")
-    write_terrain_maps(cfg, normals, tpl)
+        Raster(_full(arr, pix, tpl), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / f"{name}.tif")
+    write_terrain_maps(cfg, normals, tpl, pix)
     report.update(map_pixels=int(n_pix), sun_bins=int(len(bins)), edge_fraction_mean=float(edge_frac.mean()))
     _write_json(cfg.workdir / "trace.json", report)
     return report
 
 
-def write_terrain_maps(cfg: SiteConfig, normals: np.ndarray, tpl: Raster) -> None:
+def write_terrain_maps(cfg: SiteConfig, normals: np.ndarray, tpl: Raster, pix: np.ndarray | None = None) -> None:
     """slope_deg / aspect_deg from the smoothed-DTM normals of the map pixels (also refreshed by irradiance)."""
     from voxsol.trace import slope_aspect
 
     slope, aspect = slope_aspect(normals)
     for name, arr in (("slope_deg", slope), ("aspect_deg", aspect)):
-        Raster(arr.reshape(tpl.ny, tpl.nx).astype(np.float32), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(
-            _maps_dir(cfg) / f"{name}.tif")
+        Raster(_full(arr, pix, tpl), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / f"{name}.tif")
+
+
+def traced_pixels(mt) -> np.ndarray | None:
+    """Flat indices of the traced map pixels (None = all; map_trace.npz files before the AOI option)."""
+    if "pixels" not in mt.files or bool(mt["all_pixels"]):
+        return None
+    return mt["pixels"]
 
 
 # ------------------------------------------------------------------------------------ irradiance
@@ -406,7 +483,10 @@ def logger_static(cfg: SiteConfig, loggers: pd.DataFrame, lt) -> pd.DataFrame:
     for tif in sorted(_maps_dir(cfg).glob("*.tif")):
         r = Raster.read(tif)
         v = r.sample(xy[:, 0], xy[:, 1])
-        rows[tif.stem] = np.bincount(owner, weights=np.nan_to_num(v), minlength=len(loggers)) / np.bincount(owner)
+        ok = np.isfinite(v)
+        num = np.bincount(owner, weights=np.where(ok, v, 0.0), minlength=len(loggers))
+        den = np.bincount(owner, weights=ok.astype(float), minlength=len(loggers))
+        rows[tif.stem] = np.divide(num, den, out=np.full(len(loggers), np.nan), where=den > 0)
     rows["svf_h_point"] = np.bincount(owner, weights=lt["T_dif_h"]) / np.bincount(owner)
     rows["svf_s_point"] = np.bincount(owner, weights=lt["T_dif_s"]) / np.bincount(owner)
     rows["edge_fraction_point"] = np.bincount(owner, weights=lt["edge"]) / np.bincount(owner)
@@ -445,7 +525,8 @@ def step_irradiance(cfg: SiteConfig) -> dict:
     mt = np.load(cfg.workdir / "map_trace.npz")
     x0, y0, res, nx, ny = mt["tpl"]
     tpl = Raster(np.zeros((int(ny), int(nx)), np.float32), x0, y0, res, cfg.crs)
-    write_terrain_maps(cfg, mt["normals"], tpl)  # before logger_static samples maps/*.tif
+    pix = traced_pixels(mt)
+    write_terrain_maps(cfg, mt["normals"], tpl, pix)  # before logger_static samples maps/*.tif
 
     lt_path = cfg.workdir / "logger_trace.npz"
     if lt_path.exists():
@@ -458,6 +539,9 @@ def step_irradiance(cfg: SiteConfig) -> dict:
         series.to_parquet(cfg.workdir / "logger_irradiance.parquet", index=False)
         logger_static(cfg, loggers, lt).to_csv(cfg.workdir / "logger_static.csv", index=False)
         report["logger_rows"] = int(len(series))
+    else:
+        for name in ("logger_irradiance.parquet", "logger_static.csv"):
+            (cfg.workdir / name).unlink(missing_ok=True)
 
     T_bins = np.load(cfg.workdir / "map_Tbins.npy", mmap_mode="r")
     W, days = sun_weights(sky, mt["bin_index"], T_bins.shape[1])
@@ -468,11 +552,17 @@ def step_irradiance(cfg: SiteConfig) -> dict:
         tag = f"{int(round(h * 100))}cm"
         us_path = _maps_dir(cfg) / f"us_index_{tag}.tif"
         if us_path.exists():
-            us = Raster.read(us_path).data.ravel()[None, :]
+            us = Raster.read(us_path).data.ravel()
+            us = (us if pix is None else us[pix])[None, :]
             tb, td = understory_transmittance(us, cosz, cfg.trace.understory_k)
             maps[f"sw_ground_{tag}_firstguess"] = (maps["sw_dir_h"] * tb + maps["sw_dif_h"] * td).astype(np.float32)
-    write_daily_netcdf(cfg.workdir / "maps_daily.nc", maps, days, tpl, cfg.crs)
     mean_tou = float((maps["sw_dir_h"] + maps["sw_dif_h"]).mean())
+    if pix is not None:  # traced AOI pixels -> full maps, NaN outside
+        for k in list(maps):
+            full = np.full((maps[k].shape[0], tpl.ny * tpl.nx), np.nan, np.float32)
+            full[:, pix] = maps[k]
+            maps[k] = full
+    write_daily_netcdf(cfg.workdir / "maps_daily.nc", maps, days, tpl, cfg.crs)
     del maps
     from voxsol.summaries import insolation_summaries
 

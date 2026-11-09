@@ -100,7 +100,7 @@ attach_logger_ids <- function(tms, loggers, tol = 0.5) {
   if ("logger_id" %in% names(tms)) {
     tms[, logger_id := as.character(logger_id)]
     unknown <- setdiff(unique(tms$logger_id), loggers$id)
-    if (length(unknown)) warning(length(unknown), " TMS logger ids not in loggers.csv (dropped): ",
+    if (length(unknown)) warning(length(unknown), " TMS logger ids not in loggers.csv (outside the scan or the aoi; dropped): ",
                                  paste(utils::head(unknown, 10), collapse = ", "))
     return(tms[logger_id %in% loggers$id])
   }
@@ -108,7 +108,8 @@ attach_logger_ids <- function(tms, loggers, tol = 0.5) {
   d2 <- outer(xy$x, loggers$x, "-")^2 + outer(xy$y, loggers$y, "-")^2
   j <- max.col(-d2, ties.method = "first")
   dist <- sqrt(d2[cbind(seq_len(nrow(xy)), j)])
-  if (any(dist > tol)) warning(sum(dist > tol), " TMS positions have no logger within ", tol, " m (dropped)")
+  if (any(dist > tol)) warning(sum(dist > tol), " TMS positions have no logger within ", tol,
+                               " m in loggers.csv (outside the scan or the aoi; dropped)")
   xy[, logger_id := ifelse(dist <= tol, loggers$id[j], NA_character_)]
   tms <- xy[tms, on = .(x, y)]
   tms[!is.na(logger_id)]

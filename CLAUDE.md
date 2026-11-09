@@ -63,6 +63,10 @@ pushed to reach it). `dist/` bundles are only an offline fallback.
   meanings: `docs/OUTPUTS.md`; QGIS export: `voxsol qgis` (`src/voxsol/qgis.py`, layer titles/styles in
   `MAPS`). When adding or changing an output, update both. QGIS runs on another PC (results are copied).
   PyQGIS is installed on the development machine only: run it with HOME/XDG redirected into `.cache/`.
+- Optional `aoi` (2026-11-09, `src/voxsol/aoi.py`): polygon file read once by `prepare` (fiona) into
+  `work/<site>/aoi.geojson`; later steps use that copy (`pipeline.map_mask`) and stop if the config no
+  longer matches. Map steps trace only the masked pixels (`map_trace.npz: pixels`); outputs are NaN
+  outside, so new map code must handle NaN (e.g. `min_count=1` in sums, finite-weighted means).
 - The target machine has less RAM than the development machine: never read a whole orthomosaic, DEM
   or other large raster into memory; stream it in windows (`rgb.ortho_blocks`, `horizon.load_dem`).
 - TMS-4 data: PostgreSQL (`voxsol db`, tested against the schema dump only) or a long-format file

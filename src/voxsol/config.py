@@ -166,6 +166,16 @@ class CalibrationParams(BaseModel):
     min_day_coverage: float = Field(0.9, gt=0, le=1)
 
 
+class AoiParams(BaseModel):
+    """Area of interest (see voxsol.aoi): points kept in its bounding box + buffer_m, maps and loggers
+    restricted to the polygon(s)."""
+
+    path: str = Field(description="Polygon/multipolygon file (GeoPackage, Shapefile, GeoJSON, ...), read-only")
+    layer: str | None = Field(None, description="Layer name (files with several layers)")
+    where: str | None = Field(None, description="Attribute filter (OGR SQL WHERE clause), e.g. \"name = 'A'\"; "
+                                                "default: all features")
+
+
 class SiteConfig(BaseModel):
     site: str = Field(pattern=r"^[A-Za-z0-9_\-]+$")
     crs: str = Field(description="Projected CRS of LAS and logger coordinates, e.g. EPSG:25832")
@@ -173,7 +183,9 @@ class SiteConfig(BaseModel):
     inputs: Inputs
     period: Period | None = None
     prepare: PrepareParams = PrepareParams()
-    buffer_m: float = Field(40.0, ge=0, description="Edge buffer excluded from maps [m]")
+    buffer_m: float = Field(40.0, ge=0, description="Edge buffer excluded from maps [m]; with an aoi also the "
+                                                     "canopy/terrain context kept around it")
+    aoi: AoiParams | None = Field(None, description="Restrict processing to a polygon/multipolygon")
     grid: GridParams = GridParams()
     voxel: VoxelParams = VoxelParams()
     trace: TraceParams = TraceParams()
@@ -182,6 +194,11 @@ class SiteConfig(BaseModel):
     horizon: HorizonParams = HorizonParams()
     calibration: CalibrationParams = CalibrationParams()
     database: DatabaseParams | None = None
+
+    @field_validator("aoi", mode="before")
+    @classmethod
+    def _aoi_path(cls, v):
+        return {"path": v} if isinstance(v, str) else v
 
     @model_validator(mode="after")
     def _sources(self):

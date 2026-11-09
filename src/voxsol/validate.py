@@ -17,7 +17,7 @@ def shadow_check(cfg: SiteConfig, surface_height: float = 0.3) -> dict:
     so agreement well above chance (kappa) rather than perfection is expected.
     """
     from voxsol.directions import sun_positions, unit_vector
-    from voxsol.pipeline import _maps_dir, load_grid, map_template, site_location
+    from voxsol.pipeline import _maps_dir, load_grid, map_mask, map_template, site_location
     from voxsol.rgb import ortho_brightness, otsu_threshold
     from voxsol.trace import macro_top, target_heights, trace
 
@@ -33,11 +33,14 @@ def shadow_check(cfg: SiteConfig, surface_height: float = 0.3) -> dict:
     xy = np.column_stack([xs.ravel(), ys.ravel()])
     T, _ = trace(grid, target_heights(grid, xy, surface_height),
                  unit_vector(sp["azimuth"].to_numpy(), sp["elevation"].to_numpy()), macro=macro_top(grid))
-    T = T[:, 0].reshape(tpl.ny, tpl.nx)
+    T = T[:, 0].reshape(tpl.ny, tpl.nx).astype(np.float32)
+    mask = map_mask(cfg, tpl)
+    if mask is not None:
+        T[~mask] = np.nan
     Raster(T.astype(np.float32), tpl.x0, tpl.y0, tpl.res, cfg.crs).write(_maps_dir(cfg) / "shadow_model_ortho_time.tif")
     bright = ortho_brightness(cfg.inputs.ortho, tpl, cfg.understory.ortho_res, cfg.understory.ortho_block_px)
     ch = Raster.read(_maps_dir(cfg) / "canopy_canopy_height.tif").sample(xy[:, 0], xy[:, 1]).reshape(tpl.ny, tpl.nx)
-    use = (ch <= cfg.grid.h_cut) & np.isfinite(bright)
+    use = (ch <= cfg.grid.h_cut) & np.isfinite(bright) & np.isfinite(T)
     dark = bright < otsu_threshold(bright[use])
     shaded = T < 0.5
     a, b = dark[use], shaded[use]

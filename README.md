@@ -153,6 +153,13 @@ Rscript R/run_calibration.R config/siteA.yaml      # k profiling, CV vs. baselin
 voxsol qgis config/siteA.yaml                      # portable QGIS project -> work/siteA/siteA_qgis.zip
 ```
 Single steps: `voxsol prepare|voxelize|understory|horizon|forcing|trace|irradiance config/siteA.yaml`.
+
+**Area of interest** (optional): `aoi: /path/to/plots.gpkg` (or `aoi: {path, layer, where}`) restricts
+processing to polygon(s) in any OGR format and CRS. Points are kept in the AOI's bounding box widened by
+`buffer_m` (surrounding trees still cast shade), so DTM and voxel grid shrink to that box; loggers
+outside the AOI are dropped; maps are traced only inside the AOI (NaN elsewhere). This saves memory and
+time on large scans. For AOI parts far apart, use one run (site) per part via `where`. Changing the AOI
+needs a run from `prepare`.
 To start from a later step: `voxsol run config/siteA.yaml --start trace`.
 
 ### Inputs

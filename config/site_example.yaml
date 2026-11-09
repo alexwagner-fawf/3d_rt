@@ -33,7 +33,15 @@ period:                    # logger campaign; drives sun geometry, forcing and m
   start: 2025-05-01
   end: 2025-09-30
 
-buffer_m: 40               # map edge buffer (low sun rays need surrounding scan coverage)
+buffer_m: 40               # map edge buffer (low sun rays need surrounding scan coverage); with an aoi: the
+                           # canopy/terrain context kept around it
+aoi: null                  # optional: restrict processing to polygon(s), e.g.
+#aoi:
+#  path: /path/to/site/plots.gpkg    # GeoPackage, Shapefile, GeoJSON, ... (any CRS; read-only)
+#  layer: null                       # layer name if the file has several
+#  where: "name = 'A'"               # optional attribute filter (OGR SQL); default: all polygons
+# Points are kept in the AOI's bounding box + buffer_m (DTM and voxel grid shrink to it), loggers outside
+# the AOI are dropped, maps are computed inside it only (NaN elsewhere). Changing it needs a run from prepare.
 
 prepare:
   ground: csf              # csf | las_class (use DJI Terra's class 2)

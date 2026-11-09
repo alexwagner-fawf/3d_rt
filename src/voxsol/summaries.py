@@ -65,7 +65,8 @@ def insolation_summaries(cfg) -> list[Path]:
             write("trans_h", label, trans, days, first, last)
 
         for label, idx in _labels(times):
-            sums = {v: ds[v].isel(time=idx).sum("time", dtype=np.float64).to_numpy() for v in NC_VARS}
+            # min_count=1 keeps NaN (pixels outside the AOI) instead of summing them to 0
+            sums = {v: ds[v].isel(time=idx).sum("time", dtype=np.float64, min_count=1).to_numpy() for v in NC_VARS}
             ghi_sum = float(np.nansum(ghi[idx]))
             write_all(label, sums, idx.size, ghi_sum, times[idx[0]].date(), times[idx[-1]].date())
             for v in NC_VARS:

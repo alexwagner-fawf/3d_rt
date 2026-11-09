@@ -34,6 +34,7 @@ TMS-4 / ERA5 (db) ────────────────────�
 | raster format | GeoTIFF, float32, nodata = NaN |
 | grid A: 0.25 m (`grid.dx`) | full scanned extent: `dtm.tif`, `maps/canopy_*.tif` |
 | grid B: 0.5 m (`trace.map_res`) | scanned extent minus `buffer_m` (40 m) on every side: all other `maps/*.tif`, `maps_daily.nc`, `insolation/*.tif`, `calibration/maps/*.tif` |
+| with an `aoi` | grid A covers the AOI's bounding box + `buffer_m` (clipped to the scan); grid B covers the AOI's bounding box, with values only inside the AOI plus a one-pixel rim (NaN elsewhere) |
 | time | UTC everywhere; "daily" = UTC day |
 | radiation | daily sums in MJ m⁻² d⁻¹; 15-min series as mean irradiance in W m⁻² |
 | `_h` / `_s` | on the horizontal plane / on the local slope plane (normal of the 1 m-smoothed DTM) |
@@ -73,12 +74,13 @@ Logger ids are the `locality_id` (= `verjkr_id`); overlapping deployments at one
 
 | file | content |
 |---|---|
+| `aoi.geojson` | only with `aoi`: the AOI polygon(s) in the site CRS, as used by all later steps (with its source file, layer and filter) |
 | `dtm.tif` | digital terrain model [m, orthometric], 0.25 m, from CSF ground points (or LAS class 2) |
 | `pulses.npz` | laser pulses: scanner position, ordered returns, ground flag (input for `voxelize`) |
 | `points_low.npz` | returns below `h_cut` and ground returns, with height above ground and RGB (input for `understory`) |
 | `points_canopy.npz` | colored returns above `h_cut` (input for green/non-green canopy) |
 | `loggers.csv` | loggers inside the scan: `id, x, y, z, xy_sd, reference, ...` |
-| `prepare.json` | `points_read`, `points_noise` (SOR), `ground_points`, `dtm_cells_with_ground` (share of DTM cells with a ground return; low = interpolated DTM), `trajectory_projection`, `pulses` (pulse statistics), `loggers_outside_scan`, `dtm_check_vs_logger_z` (DTM − RTK ground height at the loggers: bias/RMSE; positive bias = DTM on top of dense vegetation) |
+| `prepare.json` | `points_read`, `points_noise` (SOR), `ground_points`, `dtm_cells_with_ground` (share of DTM cells with a ground return; low = interpolated DTM), `trajectory_projection`, `pulses` (pulse statistics), `loggers_outside_scan`, `loggers_outside_aoi`, `aoi` (area, context box, share of the box covered by the AOI, points in the files vs. in the box), `dtm_check_vs_logger_z` (DTM − RTK ground height at the loggers: bias/RMSE; positive bias = DTM on top of dense vegetation) |
 
 ### voxelize
 
@@ -231,6 +233,7 @@ large intermediate files (voxels, pulses, `maps_daily.nc`). It is replaced on ev
 | Loggers | `loggers.geojson`: points labelled with the logger id. Attributes: metadata (`loggers.csv`), every static layer averaged over the uncertainty disk (`logger_static.csv`), `sw_tou_h_mean_MJ` and `trans_h_mean` (from the 15-min logger series), and per calibrated sensor/statistic `<sensor>_<stat>_obs` (mean observed offset), `_cv` (mean held-out prediction), `_resid` (obs − cv) and `_days`. `logger_disks.geojson`: the uncertainty disks (radius 2·`xy_sd`) |
 | Temperature offset dT (calibrated) | `result/dT_*.tif`, one sub-group per sensor and statistic, one layer per month, the same diverging colour range for all months of a group (blue = cooler, red = warmer than the reference). Band 2 (`se_approx`) can be chosen in the layer's symbology |
 | Insolation at the top of the understory | `insolation/*.tif`: period and monthly maps per variable, one colour range per variable |
+| Area of interest | `aoi.geojson` (only with `aoi`): red outline |
 | Sky view and canopy, Understory, Orthophoto indices, Terrain, Quality | the static layers of `maps/` and the DTM (with a hillshade basemap) |
 
 Layer names carry the unit; each layer's *Properties > Metadata* holds a short description. Initially

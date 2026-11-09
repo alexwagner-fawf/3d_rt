@@ -357,7 +357,7 @@ class Project:
         SubElement(pipe, "resamplingStage").text = "resamplingFilter"
 
     def vector(self, parent, name: str, source: str, geometry: str, visible: bool, abstract: str = "",
-               label_field: str | None = None):
+               label_field: str | None = None, outline: tuple[str, str] = ("20,20,20,255", "0.3")):
         wkb = {"Point": "Point", "Polygon": "Polygon"}[geometry]
         ml = self._layer(parent, "vector", name, source, "ogr", visible, abstract, geometry=geometry, wkbType=wkb,
                          labelsEnabled="1" if label_field else "0", readOnly="0", simplifyDrawingHints="0",
@@ -373,8 +373,8 @@ class Project:
                      "size_unit": "MM", "angle": "0", "joinstyle": "bevel", "scale_method": "diameter"}
         else:
             sl = SubElement(sym, "layer", **{"class": "SimpleFill", "pass": "0", "enabled": "1", "locked": "0"})
-            props = {"color": "0,0,0,0", "style": "no", "outline_color": "20,20,20,255", "outline_style": "solid",
-                     "outline_width": "0.3", "outline_width_unit": "MM", "joinstyle": "bevel"}
+            props = {"color": "0,0,0,0", "style": "no", "outline_color": outline[0], "outline_style": "solid",
+                     "outline_width": outline[1], "outline_width_unit": "MM", "joinstyle": "bevel"}
         for k, v in props.items():
             SubElement(sl, "prop", k=k, v=v)
         SubElement(r, "rotation")
@@ -484,6 +484,16 @@ def export_qgis(cfg, make_zip: bool = True, log=print) -> dict:
             prj.vector(g, "Position uncertainty (2 sd)", "./logger_disks.geojson", "Polygon", False,
                        "Disk of radius 2 * xy_sd around each logger, sampled for the logger tracing.")
             count("Loggers")
+
+    aoi_path = work / "aoi.geojson"
+    if aoi_path.exists():
+        g = prj.group(None, "Area of interest", expanded=True)
+        shutil.copy(aoi_path, out / "aoi.geojson")
+        prj.vector(g, "Area of interest", "./aoi.geojson", "Polygon", True,
+                   "The polygon(s) processing was restricted to (config aoi). Maps are computed inside it plus "
+                   "a one-pixel rim; trees within buffer_m around it are part of the shading.",
+                   outline=("215,25,28,255", "0.7"))
+        count("Area of interest")
 
     # calibrated temperature offsets ----------------------------------------------------------
     dts = sorted((work / "calibration" / "maps").glob("dT_*_*_*.tif"))
