@@ -60,7 +60,9 @@ pushed to reach it). `dist/` bundles are only an offline fallback.
   labels (`air 15 cm`, `air 2 cm`, `soil 8 cm`, `soil 0-15 cm`) did not match `calibration.sensors`. Labels
   are now normalized (`height_key` in `io/loggers.py` and `R/loggers.R`, same rules, tested for parity).
   Soil-moisture units in the database are unknown (raw counts are skipped with a warning). Output
-  meanings: `docs/OUTPUTS.md` (keep it in sync when adding or changing outputs).
+  meanings: `docs/OUTPUTS.md`; QGIS export: `voxsol qgis` (`src/voxsol/qgis.py`, layer titles/styles in
+  `MAPS`). When adding or changing an output, update both. QGIS runs on another PC (results are copied).
+  PyQGIS is installed on the development machine only: run it with HOME/XDG redirected into `.cache/`.
 - The target machine has less RAM than the development machine: never read a whole orthomosaic, DEM
   or other large raster into memory; stream it in windows (`rgb.ortho_blocks`, `horizon.load_dem`).
 - TMS-4 data: PostgreSQL (`voxsol db`, tested against the schema dump only) or a long-format file

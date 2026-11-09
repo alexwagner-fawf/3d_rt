@@ -50,7 +50,8 @@ class Raster:
         return bilinear_many(self.data.astype(np.float64), self.x0, self.y0, self.res,
                              np.asarray(x, np.float64), np.asarray(y, np.float64))
 
-    def write(self, path: str | Path, nodata: float | None = np.nan, **tags) -> None:
+    def write(self, path: str | Path, nodata: float | None = np.nan, description: str | None = None,
+              unit: str | None = None, **tags) -> None:
         data = np.flipud(self.data)
         profile = dict(driver="GTiff", height=self.ny, width=self.nx, count=1, dtype=data.dtype,
                        transform=from_origin(self.x0, self.y1, self.res, self.res), crs=self.crs,
@@ -59,6 +60,10 @@ class Raster:
             profile["nodata"] = nodata
         with rasterio.open(path, "w", **profile) as dst:
             dst.write(data, 1)
+            if description:
+                dst.set_band_description(1, description)
+            if unit:
+                dst.set_band_unit(1, unit)
             if tags:
                 dst.update_tags(**{k: str(v) for k, v in tags.items()})
 

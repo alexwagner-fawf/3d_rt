@@ -288,6 +288,13 @@ in `docs/db/schema.sql`, from the user's `rstudio-export/`). Design:
 - **Aspect** (2026-11-09): `aspect_deg.tif` held the upslope direction (180° off); the irradiance itself
   used the normals and was correct. Fixed (`trace.slope_aspect`), and `irradiance` rewrites slope/aspect
   so existing runs are corrected without re-tracing.
+- **QGIS export** (2026-11-09, user's choice: generated project, results copied to another PC, monthly
+  + period summaries): `voxsol qgis` writes a self-contained folder + zip with compressed GeoTIFF copies
+  (overviews), GeoJSON loggers (EPSG via the legacy `crs` member, read by GDAL) and a `.qgs` written as
+  XML (no PyQGIS on the target; format of QGIS 3.22, legacy `<prop>` symbol properties). QGIS ignores
+  `<projectCrs>` unless `SpatialRefSys/ProjectionsEnabled` = 1. Tested by loading the project in PyQGIS
+  3.44 (all layers valid, CRS set), skipped where QGIS is not installed. `insolation/` summaries are
+  built month by month from `maps_daily.nc` (monthly sums, period = sum of months).
 - **Tests** load the real schema into a throwaway PostGIS cluster (unix socket in the pytest temp dir)
   with the dump's grants. Downstream check: the synthetic site converted into a snapshot reproduces
   the calibration (T3 max CV R² 0.657 vs 0.663, T2 max 0.817 vs 0.818).

@@ -9,6 +9,7 @@ candidates=(
   "$HOME/R" "$HOME/.config/R" "$HOME/.local/share/r-miniconda"
   "$HOME/.bashrc" "$HOME/.profile" "$HOME/.zshrc" "$HOME/.cdsapirc" "$HOME/.Renviron" "$HOME/.Rprofile"
   "$HOME/.Rhistory" "$HOME/.python_history" "$HOME/.matplotlib" "$HOME/.config/matplotlib"
+  "$HOME/.local/share/QGIS" "$HOME/.config/QGIS"
 )
 for c in "${candidates[@]}"; do
   [ -e "$c" ] && find "$c" -newer "$stamp" -not -type d 2>/dev/null

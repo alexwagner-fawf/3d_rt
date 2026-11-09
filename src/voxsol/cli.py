@@ -151,6 +151,19 @@ def validate(
 
 
 @app.command()
+def qgis(
+    config: Path = typer.Argument(..., exists=True, help="Site YAML config"),
+    make_zip: bool = typer.Option(True, "--zip/--no-zip", help="Also pack the folder into work/<site>/<site>_qgis.zip"),
+) -> None:
+    """Portable QGIS project of the results: styled layers, loggers, monthly/period insolation, dT maps."""
+    from voxsol.qgis import export_qgis
+
+    report = export_qgis(load_config(config), make_zip=make_zip, log=typer.echo)
+    typer.echo(json.dumps(report, indent=2))
+    typer.echo(f"Copy {report.get('zip', report['folder'])} to the QGIS computer and open {Path(report['project']).name}")
+
+
+@app.command()
 def synth(
     out: Path = typer.Option(Path("data/synthetic"), help="Output folder (inside the repo)"),
     config: Path = typer.Option(Path("config/synthetic.yaml"), help="Config file to write"),

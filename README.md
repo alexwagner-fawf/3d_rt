@@ -150,6 +150,7 @@ voxsol inspect config/siteA.yaml                   # check GPS time / pulses / t
 voxsol run config/siteA.yaml                       # prepare → voxelize → understory → horizon → forcing → trace → irradiance
 voxsol validate config/siteA.yaml                  # modeled shadows vs. orthomosaic shadows
 Rscript R/run_calibration.R config/siteA.yaml      # k profiling, CV vs. baselines, monthly ΔT maps
+voxsol qgis config/siteA.yaml                      # portable QGIS project -> work/siteA/siteA_qgis.zip
 ```
 Single steps: `voxsol prepare|voxelize|understory|horizon|forcing|trace|irradiance config/siteA.yaml`.
 To start from a later step: `voxsol run config/siteA.yaml --start trace`.
@@ -167,6 +168,7 @@ To start from a later step: `voxsol run config/siteA.yaml --start trace`.
 
 ### Outputs (`work/<site>/`)
 Every file and map layer (meaning, units, range, caveats) is explained in **[docs/OUTPUTS.md](docs/OUTPUTS.md)**.
+`voxsol qgis` packs the maps, the loggers and a styled QGIS project into one zip for another computer.
 - `dtm.tif`, `voxels.npz`, `maps/*.tif`: DTM, extinction grid, static layers (canopy PAI green/non-green,
   canopy height, sky view horizontal/slope, understory descriptors, RGB indices, slope/aspect, edge fraction)
 - `logger_irradiance.parquet`: 15-min SW at the top of the understory per logger (direct/diffuse,

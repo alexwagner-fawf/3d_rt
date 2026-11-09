@@ -2,7 +2,8 @@
 
 All results of a site go to `work/<site>/` (never into the input folders). This page explains each
 file and map layer: what it shows, its units and range, how it is derived, and what to watch out for.
-Start with [Which map for what](#which-map-for-what); the rest is a reference by pipeline step.
+Start with [Which map for what](#which-map-for-what); the rest is a reference by pipeline step. To look
+at everything in QGIS on another computer, see [QGIS export](#qgis-export-voxsol-qgis).
 
 ## The model in one paragraph
 
@@ -32,7 +33,7 @@ TMS-4 / ERA5 (db) ────────────────────�
 | CRS | the site CRS from the config (e.g. EPSG:25832); heights orthometric |
 | raster format | GeoTIFF, float32, nodata = NaN |
 | grid A: 0.25 m (`grid.dx`) | full scanned extent: `dtm.tif`, `maps/canopy_*.tif` |
-| grid B: 0.5 m (`trace.map_res`) | scanned extent minus `buffer_m` (40 m) on every side: all other `maps/*.tif`, `maps_daily.nc`, `sw_tou_h_mean_daily.tif`, `calibration/maps/*.tif` |
+| grid B: 0.5 m (`trace.map_res`) | scanned extent minus `buffer_m` (40 m) on every side: all other `maps/*.tif`, `maps_daily.nc`, `insolation/*.tif`, `calibration/maps/*.tif` |
 | time | UTC everywhere; "daily" = UTC day |
 | radiation | daily sums in MJ m⁻² d⁻¹; 15-min series as mean irradiance in W m⁻² |
 | `_h` / `_s` | on the horizontal plane / on the local slope plane (normal of the 1 m-smoothed DTM) |
@@ -43,8 +44,9 @@ TMS-4 / ERA5 (db) ────────────────────�
 | question | file | notes |
 |---|---|---|
 | **How much warmer/cooler is a spot than the reference?** (the final microclimate covariate) | `calibration/maps/dT_<sensor>_<stat>_<YYYY-MM>.tif` | band 1 `dT_mean` [K], band 2 `se_approx` [K]; one file per sensor (T3/T2/T1), daily statistic (max/mean) and month |
-| How much sun reaches the top of the understory? (insolation covariate, uncalibrated) | `sw_tou_h_mean_daily.tif` | mean daily SW_tou over the period [MJ m⁻² d⁻¹]; compare with the open-sky mean in `site_daily.csv` (`ghi`) |
-| ... per day, direct vs. diffuse, horizontal vs. slope | `maps_daily.nc` | one band per day; see [irradiance](#irradiance) |
+| How much sun reaches the top of the understory? (insolation covariate, uncalibrated) | `insolation/sw_tou_h_period.tif` | mean daily SW_tou over the period [MJ m⁻² d⁻¹]; `trans_h_period.tif` = the same relative to open sky (0–1) |
+| ... per month, direct vs. diffuse, slope plane | `insolation/<variable>_<YYYY-MM>.tif` | see [insolation summaries](#insolation-summaries) |
+| ... per day | `maps_daily.nc` | one band per day; see [irradiance](#irradiance) |
 | How open is the sky (canopy + terrain)? | `maps/svf_h.tif` | 0–1, share of diffuse light passing; independent of weather |
 | How dense is the tree/shrub layer above 1 m? | `maps/canopy_pai.tif`, `canopy_gap_vertical.tif`, `canopy_canopy_height.tif` | 0.25 m grid |
 | Living vs. dead canopy | `maps/canopy_pai_green.tif`, `canopy_pai_nongreen.tif` | from RGB-colored points; reliable mainly for upper surfaces |
@@ -169,11 +171,24 @@ GHI of the same day (`site_daily.csv`).
 
 | file | content |
 |---|---|
-| `sw_tou_h_mean_daily.tif` | mean of the daily SW_tou (horizontal) over the period [MJ m⁻² d⁻¹]: **the single overview map of insolation** |
 | `site_daily.csv` | per day, open sky: `ghi` (global), `iso` (isotropic diffuse), `beam_h` (beam incl. circumsolar on the horizontal) [MJ m⁻²], `cosz_eff` (beam-energy-weighted cos of the sun zenith, used for the understory term in the maps) |
 | `logger_irradiance.parquet` | per logger and interval (15 min), mean over its uncertainty disk [W m⁻²]: `ghi` open sky; `sw_dir_h, sw_dif_h, sw_tou_h` and `_s` (slope plane) at the top of the understory; `sw_tou_h_sd` spread across the disk (position uncertainty); `trans_h` = sw_tou_h / ghi (when ghi > 10); `zenith, cosz, beam_n, iso` |
 | `logger_static.csv` | per logger: every `maps/*.tif` layer averaged over its uncertainty disk, plus `svf_h_point, svf_s_point, edge_fraction_point` traced at the disk points; the static predictors of the calibration |
-| `irradiance.json` | `days`, `logger_rows`, `sw_tou_h_mean`, `ghi_mean` |
+| `irradiance.json` | `days`, `logger_rows`, `sw_tou_h_mean`, `ghi_mean`, `insolation_maps` |
+
+#### Insolation summaries
+
+Folder `work/<site>/insolation/`, written by `irradiance` (and by `voxsol qgis` if missing): one GeoTIFF per variable and month
+(`<variable>_<YYYY-MM>.tif`) and for the whole period (`<variable>_period.tif`), grid B. Partial months
+average the days available (GeoTIFF tags `days`, `first_day`, `last_day`).
+
+| variable | unit | meaning |
+|---|---|---|
+| `sw_tou_h` | MJ m⁻² d⁻¹ | mean daily SW at the top of the understory, horizontal (`sw_dir_h + sw_dif_h`). `sw_tou_h_period.tif` is **the single overview map of insolation** (before 2026-11-09: `sw_tou_h_mean_daily.tif`) |
+| `sw_dir_h` | MJ m⁻² d⁻¹ | mean daily direct part (beam + circumsolar) |
+| `sw_dif_h` | MJ m⁻² d⁻¹ | mean daily diffuse part |
+| `sw_tou_s` | MJ m⁻² d⁻¹ | mean daily total on the slope plane (energy actually received by the inclined ground) |
+| `trans_h` | 0–1 | Σ SW_tou (horizontal) / Σ open-sky GHI over the days: share of the open-sky radiation that reaches the top of the understory. Comparable between months with different weather |
 
 ### validate (`voxsol validate`, needs `inputs.ortho_time`)
 
@@ -203,6 +218,24 @@ Reading a ΔT map: `dT_T3_max_2025-07.tif` = 3 K means that in July 2025, the da
 ground in that pixel is on average 3 K above the daily maximum of the ERA5 reference (t2m). The absolute
 temperature is reference + ΔT. The maps carry the seasonal term `s(doy)`; compare pixels within one map,
 or the same pixel across months.
+
+## QGIS export (`voxsol qgis`)
+
+`voxsol qgis config/<site>.yaml` writes `work/<site>/<site>_qgis/` and `work/<site>/<site>_qgis.zip`
+(the same folder packed: copy the zip to the PC with QGIS, unpack it, open `<site>.qgs`; QGIS 3.22 or
+newer). The folder is self-contained (relative paths) and holds compressed copies of the maps, not the
+large intermediate files (voxels, pulses, `maps_daily.nc`). It is replaced on every export.
+
+| in the project | content |
+|---|---|
+| Loggers | `loggers.geojson`: points labelled with the logger id. Attributes: metadata (`loggers.csv`), every static layer averaged over the uncertainty disk (`logger_static.csv`), `sw_tou_h_mean_MJ` and `trans_h_mean` (from the 15-min logger series), and per calibrated sensor/statistic `<sensor>_<stat>_obs` (mean observed offset), `_cv` (mean held-out prediction), `_resid` (obs − cv) and `_days`. `logger_disks.geojson`: the uncertainty disks (radius 2·`xy_sd`) |
+| Temperature offset dT (calibrated) | `result/dT_*.tif`, one sub-group per sensor and statistic, one layer per month, the same diverging colour range for all months of a group (blue = cooler, red = warmer than the reference). Band 2 (`se_approx`) can be chosen in the layer's symbology |
+| Insolation at the top of the understory | `insolation/*.tif`: period and monthly maps per variable, one colour range per variable |
+| Sky view and canopy, Understory, Orthophoto indices, Terrain, Quality | the static layers of `maps/` and the DTM (with a hillshade basemap) |
+
+Layer names carry the unit; each layer's *Properties > Metadata* holds a short description. Initially
+visible: loggers, `sw_tou_h period` and the hillshade. Colour ranges are fixed for bounded variables
+(0–1, aspect 0–360) and otherwise span the 2–98 % range of the data.
 
 ## Checks before trusting the maps
 

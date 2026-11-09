@@ -472,11 +472,14 @@ def step_irradiance(cfg: SiteConfig) -> dict:
             tb, td = understory_transmittance(us, cosz, cfg.trace.understory_k)
             maps[f"sw_ground_{tag}_firstguess"] = (maps["sw_dir_h"] * tb + maps["sw_dif_h"] * td).astype(np.float32)
     write_daily_netcdf(cfg.workdir / "maps_daily.nc", maps, days, tpl, cfg.crs)
-    mean_tou = (maps["sw_dir_h"] + maps["sw_dif_h"]).mean(0)
-    Raster(mean_tou.reshape(tpl.ny, tpl.nx), x0, y0, res, cfg.crs).write(
-        cfg.workdir / "sw_tou_h_mean_daily.tif")
-    report.update(map_days=int(len(days)), sw_tou_h_mean=float(mean_tou.mean()),
-                  ghi_mean=float(site_daily["ghi"].mean()))
+    mean_tou = float((maps["sw_dir_h"] + maps["sw_dif_h"]).mean())
+    del maps
+    from voxsol.summaries import insolation_summaries
+
+    (cfg.workdir / "sw_tou_h_mean_daily.tif").unlink(missing_ok=True)  # now insolation/sw_tou_h_period.tif
+    summaries = insolation_summaries(cfg)
+    report.update(map_days=int(len(days)), sw_tou_h_mean=mean_tou, ghi_mean=float(site_daily["ghi"].mean()),
+                  insolation_maps=len(summaries))
     _write_json(cfg.workdir / "irradiance.json", report)
     return report
 
